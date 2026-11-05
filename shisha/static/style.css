@@ -629,9 +629,9 @@ select {
 }
 .group-search {
   display: block;
-  margin-bottom: 8px;
 }
-.group-search input {
+.group-search input,
+.member-search input {
   background: #fbfaf6;
 }
 .group-avatar {
@@ -679,17 +679,27 @@ select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
-.refresh-button {
-  border: 1px solid #e1d9cc;
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #e9e2d6;
   border-radius: 8px;
   background: #fbfaf6;
-  color: #76695d;
-  padding: 10px 14px;
-  font-size: 12px;
+  color: #9e785c;
 }
-.refresh-button span {
-  margin-left: 10px;
-  color: #a87553;
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+.icon-button:hover {
+  background: #f2ece2;
+}
+.icon-button:disabled {
+  opacity: 0.5;
 }
 .message-tabs {
   display: flex;
@@ -1078,17 +1088,6 @@ select:disabled {
   align-items: center;
   gap: 10px;
 }
-.quiet-button {
-  padding: 8px 4px;
-  border: 0;
-  background: transparent;
-  color: #9c694b;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.quiet-button:disabled {
-  opacity: 0.5;
-}
 .primary-button,
 .secondary-button {
   border-radius: 8px;
@@ -1155,6 +1154,25 @@ select:disabled {
   align-items: center;
   gap: 9px;
 }
+.library-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 98px;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.member-search input {
+  padding-left: 9px;
+  padding-right: 9px;
+}
+.member-search input[aria-invalid="true"] {
+  border-color: #b66d57;
+}
+.filter-error {
+  margin: 0 0 8px;
+  color: #a5624c;
+  font-size: 10px;
+  line-height: 1.5;
+}
 .columns-switch {
   display: flex;
   padding: 2px;
@@ -1208,11 +1226,29 @@ select:disabled {
   background: #f2ede4;
 }
 .library-card.listening {
-  border-color: #d9c4a8;
-  background: #e9ddca;
+  border-color: #e6dac8;
+  background: #f1e9dc;
 }
 .library-card.listening:hover {
-  background: #e2d3be;
+  background: #ebe1d2;
+}
+.group-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 3px;
+}
+.group-info .group-id {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+.group-member-count {
+  flex: none;
+  color: #a79b8d;
+  font-size: 10px;
+  white-space: nowrap;
 }
 .library-card:active,
 .member-chip:active {
@@ -1414,5 +1450,12 @@ select:disabled {
   .library-panel,
   .board-panel {
     padding: 15px;
+  }
+  .groups-board[data-columns="2"] .group-info {
+    display: block;
+  }
+  .groups-board[data-columns="2"] .group-member-count {
+    display: block;
+    margin-top: 2px;
   }
 }

@@ -71,10 +71,10 @@
       saveFilter("notification_group", notification.value),
     );
 
-    async function loadGroups() {
+    async function loadGroups(force = false) {
       refresh.disabled = true;
       try {
-        const groups = await getSnowGroups(config);
+        const groups = await getSnowGroups(config, force);
         notification.replaceChildren(new Option("选择通知群聊", ""));
         for (const group of groups)
           notification.add(new Option(`${group.name} (${group.id})`, group.id));
@@ -109,7 +109,7 @@
         refresh.disabled = false;
       }
     }
-    refresh.addEventListener("click", loadGroups);
+    refresh.addEventListener("click", () => loadGroups(true));
     renderKeywords();
     renderStatus(data.status);
     loadGroups();

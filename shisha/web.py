@@ -82,13 +82,19 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
             if not isinstance(body, dict):
                 raise TypeError("连接设置格式不正确")
             connection = config.connection_settings(body)
-            items = await worker.client(connection).action("get_group_list", {})
+            refresh = body.get("refresh", False)
+            if type(refresh) is not bool:
+                raise TypeError("刷新参数必须是开关")
+            items = await worker.client(connection).action(
+                "get_group_list", {"no_cache": refresh}
+            )
             return web.json_response(
                 {
                     "groups": [
                         {
                             "id": str(item["group_id"]),
                             "name": item.get("group_remark") or item["group_name"],
+                            "member_count": item.get("member_count"),
                         }
                         for item in items
                     ]

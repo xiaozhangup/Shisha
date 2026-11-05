@@ -96,13 +96,18 @@ function createPageSaver(onSaved = () => {}) {
   return saver;
 }
 
-async function getSnowGroups(config) {
+async function getSnowGroups(config, refresh = false) {
   const connection = config.snowluma;
   const mode = connection.mode;
   const response = await fetch("/api/groups", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode, url: connection[`${mode}_url`], token: "" }),
+    body: JSON.stringify({
+      mode,
+      url: connection[`${mode}_url`],
+      token: "",
+      refresh,
+    }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "无法读取群列表");

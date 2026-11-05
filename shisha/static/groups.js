@@ -13,6 +13,8 @@ class GroupBoard {
       "#columns-switch [data-columns]",
     );
     this.search = document.querySelector("#group-search");
+    this.memberFilter = document.querySelector("#member-filter");
+    this.memberFilterError = document.querySelector("#member-filter-error");
     this.createDialog = document.querySelector("#create-dialog");
     this.createName = document.querySelector("#create-name");
     this.createError = document.querySelector("#create-error");
@@ -22,6 +24,7 @@ class GroupBoard {
 
   bind() {
     this.search.addEventListener("input", () => this.renderLibrary());
+    this.memberFilter.addEventListener("input", () => this.renderLibrary());
     this.columnOptions.forEach((button) =>
       button.addEventListener("click", () => {
         const columns = Number(button.dataset.columns);
@@ -37,7 +40,7 @@ class GroupBoard {
     this.renderColumns();
     document
       .querySelector("#refresh-groups")
-      .addEventListener("click", () => this.loadGroups());
+      .addEventListener("click", () => this.loadGroups(true));
     document
       .querySelector("#refresh-todoist")
       .addEventListener("click", () => this.loadCatalog());
@@ -132,9 +135,33 @@ class GroupBoard {
     const groups = this.allGroups();
     const selected = new Set(this.state.filter.groups);
     const query = this.search.value.trim().toLocaleLowerCase();
-    const visible = groups.filter((group) =>
-      `${group.name} ${group.id}`.toLocaleLowerCase().includes(query),
-    );
+    const expression = this.memberFilter.value.trim();
+    const match = expression.match(/^(>=|<=|>|<|=|≥|≤)?\s*(\d+)$/u);
+    const invalid = Boolean(expression && !match);
+    this.memberFilter.setAttribute("aria-invalid", String(invalid));
+    this.memberFilterError.hidden = !invalid;
+    const visible = groups.filter((group) => {
+      if (!`${group.name} ${group.id}`.toLocaleLowerCase().includes(query))
+        return false;
+      if (!match) return true;
+      const count = group.member_count;
+      if (!Number.isInteger(count) || count <= 0) return false;
+      const limit = Number(match[2]);
+      switch (match[1]) {
+        case ">":
+          return count > limit;
+        case ">=":
+        case "≥":
+          return count >= limit;
+        case "<":
+          return count < limit;
+        case "<=":
+        case "≤":
+          return count <= limit;
+        default:
+          return count === limit;
+      }
+    });
     visible.sort(
       (a, b) => Number(selected.has(b.id)) - Number(selected.has(a.id)),
     );
@@ -150,7 +177,8 @@ class GroupBoard {
     if (!visible.length) {
       const message = document.createElement("p");
       message.className = "group-empty";
-      message.textContent = query ? "没有匹配的群聊" : this.groupMessage;
+      message.textContent =
+        query || match ? "没有匹配的群聊" : this.groupMessage;
       this.list.append(message);
       return;
     }
@@ -171,8 +199,20 @@ class GroupBoard {
       detail.textContent = selected.has(group.id)
         ? this.displayName(this.assigned(group.id))
         : "未监听";
-      meta.append(name, detail);
-      card.setAttribute("aria-label", `${group.name}，${detail.textContent}`);
+      const memberCount = document.createElement("span");
+      memberCount.className = "group-member-count";
+      memberCount.textContent =
+        Number.isInteger(group.member_count) && group.member_count > 0
+          ? `${group.member_count} 人`
+          : "人数未知";
+      const info = document.createElement("span");
+      info.className = "group-info";
+      info.append(detail, memberCount);
+      meta.append(name, info);
+      card.setAttribute(
+        "aria-label",
+        `${group.name}，${detail.textContent}，${memberCount.textContent}`,
+      );
       card.setAttribute("aria-haspopup", "dialog");
       card.addEventListener("click", () => this.openMove(group));
       card.append(groupAvatar(group.id, group.name), meta);
@@ -454,13 +494,13 @@ class GroupBoard {
     return { container, select, button };
   }
 
-  async loadGroups() {
+  async loadGroups(force = false) {
     const refresh = document.querySelector("#refresh-groups");
     refresh.disabled = true;
     this.groupMessage = "正在读取群列表…";
     this.groupError = "";
     try {
-      this.availableGroups = await getSnowGroups(this.state);
+      this.availableGroups = await getSnowGroups(this.state, force);
       this.groupMessage = "当前账号没有群聊";
     } catch (error) {
       this.groupError = error.message || "无法读取群列表";

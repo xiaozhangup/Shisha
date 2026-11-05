@@ -31,8 +31,25 @@
         </div>
         <div class="groups-toolbar">
           <div class="board-actions">
-            <button class="quiet-button" id="refresh-todoist" type="button">
-              刷新项目</button
+            <button
+              class="icon-button"
+              id="refresh-todoist"
+              type="button"
+              aria-label="刷新 Todoist 项目"
+              title="刷新 Todoist 项目"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5" />
+                <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" />
+              </svg></button
             ><button class="primary-button" id="add-group" type="button">
               新建分组
             </button>
@@ -59,18 +76,54 @@
                     2 列
                   </button>
                 </div>
-                <button class="quiet-button" id="refresh-groups" type="button">
-                  刷新
+                <button
+                  class="icon-button"
+                  id="refresh-groups"
+                  type="button"
+                  aria-label="刷新群列表"
+                  title="刷新群列表"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5" />
+                    <path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" />
+                  </svg>
                 </button>
               </div>
             </div>
-            <label class="group-search"
-              ><span class="sr-only">搜索群聊</span
-              ><input
-                id="group-search"
-                type="search"
-                placeholder="搜索群名或群号"
-            /></label>
+            <div class="library-filters">
+              <label class="group-search"
+                ><span class="sr-only">搜索群聊</span
+                ><input
+                  id="group-search"
+                  type="search"
+                  placeholder="搜索群名或群号"
+              /></label>
+              <label class="member-search"
+                ><span class="sr-only">按人数筛选</span
+                ><input
+                  id="member-filter"
+                  type="text"
+                  placeholder="人数 ≥10"
+                  aria-describedby="member-filter-error"
+                  autocomplete="off"
+              /></label>
+            </div>
+            <p
+              id="member-filter-error"
+              class="filter-error"
+              role="status"
+              hidden
+            >
+              输入人数条件，如 &gt;10 或 &gt;=10
+            </p>
             <div class="library-list" id="group-list" aria-live="polite">
               <p class="group-empty">正在读取群列表…</p>
             </div>
