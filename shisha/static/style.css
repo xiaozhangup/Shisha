@@ -1064,16 +1064,10 @@ select:disabled {
 }
 .groups-toolbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 14px;
   margin-bottom: 18px;
-}
-.todoist-toggle {
-  margin: 0;
-  padding: 10px 13px;
-  gap: 18px;
-  background: #eae5d9;
 }
 .board-actions {
   display: flex;
@@ -1210,6 +1204,27 @@ select:disabled {
   border-color: #a87553;
   background: #f4e9dc;
 }
+.member-dragging .group-dropzone {
+  position: relative;
+  z-index: 1001;
+}
+.drag-remove-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 24px;
+  background: rgba(79, 64, 49, 0.08);
+}
+.drag-remove-overlay span {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #4d4237;
+  color: #fffaf0;
+  font-size: 12px;
+}
 .drop-placeholder {
   margin: auto;
   padding: 20px;
@@ -1234,10 +1249,38 @@ select:disabled {
   border-radius: 6px;
   font-size: 9px;
 }
-.member-chip > span:last-child {
+.member-chip > span:nth-child(2) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.remove-member {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #a5907d;
+  font-size: 16px;
+  line-height: 1;
+}
+.remove-member:hover {
+  color: #85583e;
+  background: #e5d8c8;
+}
+.group-output {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #6e6154;
+  font-size: 11px;
+  font-weight: 600;
+}
+.group-output + .target-fields {
+  margin-top: 15px;
 }
 .rule-delay {
   max-width: 210px;

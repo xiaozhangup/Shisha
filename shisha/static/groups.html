@@ -18,7 +18,7 @@
           <div>
             <p class="eyebrow">SHISHA / GROUPS</p>
             <h1>群聊分组</h1>
-            <p class="intro">选择要监听的群聊，拖动到对应分组。</p>
+            <p class="intro">拖入分组开始监听，拖出分组停止监听。</p>
           </div>
           <span class="save-state" data-save-state role="status"
             >设置自动保存</span
@@ -30,13 +30,6 @@
           ><span data-status-detail>完成设置后开始监听</span>
         </div>
         <div class="groups-toolbar">
-          <label class="setting-toggle todoist-toggle"
-            ><span>写入 Todoist</span
-            ><span class="switch"
-              ><input id="todoist-enabled" type="checkbox" /><span
-                class="switch-track"
-              ></span></span
-          ></label>
           <div class="board-actions">
             <button class="quiet-button" id="refresh-todoist" type="button">
               刷新项目</button
@@ -71,7 +64,7 @@
             <div class="board-heading">
               <div>
                 <h2 id="board-title">分组</h2>
-                <p>拖入群聊后会自动开启监听</p>
+                <p>每个群聊只能属于一个分组</p>
               </div>
             </div>
             <p id="catalog-message" class="catalog-message" role="status"></p>

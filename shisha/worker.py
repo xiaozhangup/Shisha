@@ -10,7 +10,7 @@ from copy import deepcopy
 import aiohttp
 
 from .analyzer import Analyzer
-from .config import ConfigStore
+from .config import ConfigStore, todoist_group
 from .models import GroupMessage, Task
 from .snowluma import SnowLumaClient
 from .storage import History
@@ -68,6 +68,7 @@ class Worker:
         return {
             "configured": self.config.ready(),
             "connected": self.connected,
+            "listening": bool(self.config.value["filter"]["groups"]),
             "error": self.last_error,
             "mode": self.config.value["snowluma"]["mode"],
         }
@@ -176,7 +177,7 @@ class Worker:
                     del self.buffers[key]
             key = (msg.group_id, msg.user_id)
             self.buffers.setdefault(key, deque()).append(msg)
-            if self.config.ready() and (
+            if self.config.ready(msg.group_id) and (
                 msg.at_all
                 or any(word in msg.text for word in config["filter"]["keywords"])
             ):
@@ -192,12 +193,13 @@ class Worker:
         ):
             if (
                 str(event.get("group_id")) != config["filter"]["notification_group"]
+                or str(event.get("group_id")) not in config["filter"]["groups"]
                 or event.get("sub_type") != "add"
             ):
                 return
             if event.get("user_id") == event.get("self_id"):
                 return
-            if self.config.ready() and any(
+            if self.config.ready(event["group_id"]) and any(
                 str(like.get("emoji_id")) == "424" for like in event.get("likes", [])
             ):
                 self._spawn(self._manual(event, config))
@@ -218,10 +220,9 @@ class Worker:
         try:
             await asyncio.sleep(delay)
             config = deepcopy(self.config.value)
-            if (
-                str(trigger.group_id) not in config["filter"]["groups"]
-                or not self.config.ready()
-            ):
+            if str(trigger.group_id) not in config["filter"][
+                "groups"
+            ] or not self.config.ready(trigger.group_id):
                 return
             messages = list(self.buffers.pop(key, ()))
             index = next(
@@ -324,7 +325,7 @@ class Worker:
             return
         todoist = (
             TodoistClient(self.session, config["todoist"])
-            if config["todoist"]["enabled"]
+            if todoist_group(config["todoist"], message.group_id)["todoist_enabled"]
             else None
         )
         for task in tasks:

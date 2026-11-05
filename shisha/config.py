@@ -14,6 +14,7 @@ DEFAULT_GROUP = {
     "project_id": "",
     "section_id": "",
     "legacy_section": "",
+    "todoist_enabled": False,
 }
 
 DEFAULTS = {
@@ -36,7 +37,7 @@ DEFAULTS = {
         "model": "glm-4.1v-thinking-flash",
         "api_key": "",
     },
-    "todoist": {"enabled": True, "token": "", "groups": [DEFAULT_GROUP]},
+    "todoist": {"token": "", "groups": [DEFAULT_GROUP]},
 }
 
 SECRETS = {
@@ -51,6 +52,14 @@ def data_directory() -> Path:
     return Path(
         os.environ.get("SHISHA_DATA_DIR", Path.home() / ".local" / "share" / "shisha")
     ).expanduser()
+
+
+def todoist_group(config: dict, group_id: int | str) -> dict:
+    groups = config["groups"]
+    default = next(group for group in groups if group["id"] == "default")
+    return next(
+        (group for group in groups if str(group_id) in group["group_ids"]), default
+    )
 
 
 class ConfigStore:
@@ -68,12 +77,21 @@ class ConfigStore:
                     }
                 )
             old_todoist = loaded.get("todoist", {})
+            migrated = "enabled" in old_todoist
             if "groups" not in old_todoist:
                 default = self.value["todoist"]["groups"][0]
                 default["group_ids"] = list(self.value["filter"]["groups"])
                 default["legacy_section"] = old_todoist.get("section", "")
+                default["todoist_enabled"] = old_todoist.get("enabled", True)
+                migrated = True
+            else:
+                for group in self.value["todoist"]["groups"]:
+                    if isinstance(group, dict) and "todoist_enabled" not in group:
+                        group["todoist_enabled"] = old_todoist.get("enabled", True)
+                        migrated = True
+            previous_groups = deepcopy(self.value["todoist"]["groups"])
             self._validate(self.value)
-            if "groups" not in old_todoist:
+            if migrated or self.value["todoist"]["groups"] != previous_groups:
                 self._write(self.value)
 
     def public(self) -> dict:
@@ -115,7 +133,8 @@ class ConfigStore:
                 if key not in DEFAULTS[section]:
                     raise ValueError(f"未知配置：{section}.{key}")
                 updated[section][key] = deepcopy(value)
-        self._validate(updated)
+        routing_changed = "groups" in changes.get("todoist", {})
+        self._validate(updated, routing_authoritative=routing_changed)
         self._write(updated)
         self.value = updated
         return self.public()
@@ -135,7 +154,7 @@ class ConfigStore:
                 os.unlink(tmp_name)
 
     @staticmethod
-    def _validate(config: dict) -> None:
+    def _validate(config: dict, routing_authoritative: bool = False) -> None:
         for section, defaults in DEFAULTS.items():
             for name, default in defaults.items():
                 value = config[section][name]
@@ -200,6 +219,14 @@ class ConfigStore:
         ):
             raise ValueError("通知群号必须为正整数")
         routing = config["todoist"]["groups"]
+        if routing_authoritative:
+            groups = [group_id for entry in routing for group_id in entry["group_ids"]]
+            config["filter"]["groups"] = groups
+        enabled = set(groups)
+        for entry in routing:
+            entry["group_ids"] = [
+                group_id for group_id in entry["group_ids"] if group_id in enabled
+            ]
         assigned = {group_id for entry in routing for group_id in entry["group_ids"]}
         default = next(entry for entry in routing if entry["id"] == "default")
         default["group_ids"].extend(
@@ -214,6 +241,8 @@ class ConfigStore:
         for group in groups:
             if not isinstance(group, dict) or set(group) != set(DEFAULT_GROUP):
                 raise ValueError("Todoist 分组格式不正确")
+            if type(group["todoist_enabled"]) is not bool:
+                raise TypeError("Todoist 写入设置必须是开关")
             for key in ("id", "name", "project_id", "section_id", "legacy_section"):
                 if not isinstance(group[key], str):
                     raise TypeError("Todoist 分组字段必须是文本")
@@ -247,14 +276,22 @@ class ConfigStore:
         if "default" not in ids:
             raise ValueError("必须保留 default 分组")
 
-    def ready(self) -> bool:
+    def ready(self, group_id: int | str | None = None) -> bool:
         c = self.value
-        return bool(
+        if not (
             c["filter"]["groups"]
             and c["ai"]["model"]
             and c["ai"]["api_key"]
             and (not c["filter"]["notify_enabled"] or c["filter"]["notification_group"])
-            and (not c["todoist"]["enabled"] or c["todoist"]["token"])
+        ):
+            return False
+        if c["todoist"]["token"]:
+            return True
+        if group_id is not None:
+            return not todoist_group(c["todoist"], group_id)["todoist_enabled"]
+        return any(
+            not todoist_group(c["todoist"], group)["todoist_enabled"]
+            for group in c["filter"]["groups"]
         )
 
     def connection_settings(self, submitted: dict) -> dict:

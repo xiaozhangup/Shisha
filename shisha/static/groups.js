@@ -27,16 +27,6 @@ class GroupBoard {
     document
       .querySelector("#add-group")
       .addEventListener("click", () => this.openCreate("group"));
-    const enabled = document.querySelector("#todoist-enabled");
-    enabled.checked = this.state.todoist.enabled;
-    enabled.addEventListener("change", () => {
-      this.state.todoist.enabled = enabled.checked;
-      this.saver.queue(
-        "todoist.enabled",
-        { todoist: { enabled: enabled.checked } },
-        100,
-      );
-    });
     document
       .querySelector("#create-cancel")
       .addEventListener("click", () => this.createDialog.close());
@@ -95,26 +85,14 @@ class GroupBoard {
     this.render();
   }
 
-  toggle(id, checked) {
-    if (checked) {
-      if (!this.state.filter.groups.includes(id))
-        this.state.filter.groups.push(id);
-      if (
-        !this.state.todoist.groups.some((group) => group.group_ids.includes(id))
-      )
-        this.state.todoist.groups
-          .find((group) => group.id === "default")
-          .group_ids.push(id);
-    } else {
-      this.state.filter.groups = this.state.filter.groups.filter(
-        (member) => member !== id,
-      );
-    }
+  unassign(id) {
+    for (const group of this.state.todoist.groups)
+      group.group_ids = group.group_ids.filter((member) => member !== id);
+    this.state.filter.groups = this.state.filter.groups.filter(
+      (member) => member !== id,
+    );
     this.saveRouting();
     this.render();
-    this.list
-      .querySelector(`[data-list-id="${id}"] input`)
-      ?.focus({ preventScroll: true });
   }
 
   render() {
@@ -162,27 +140,15 @@ class GroupBoard {
       detail.className = "group-id";
       detail.textContent = selected.has(group.id)
         ? this.displayName(this.assigned(group.id))
-        : group.id;
+        : "未监听";
       meta.append(name, detail);
       const move = document.createElement("button");
       move.type = "button";
       move.className = "move-button";
-      move.textContent = "移动";
-      move.setAttribute("aria-label", `移动 ${group.name}`);
+      move.textContent = selected.has(group.id) ? "移动" : "加入";
+      move.setAttribute("aria-label", `${move.textContent} ${group.name}`);
       move.addEventListener("click", () => this.openMove(group));
-      const toggle = document.createElement("label");
-      toggle.className = "switch";
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = selected.has(group.id);
-      checkbox.setAttribute("aria-label", `监听 ${group.name}`);
-      checkbox.addEventListener("change", () =>
-        this.toggle(group.id, checkbox.checked),
-      );
-      const track = document.createElement("span");
-      track.className = "switch-track";
-      toggle.append(checkbox, track);
-      card.append(groupAvatar(group.id, group.name), meta, move, toggle);
+      card.append(groupAvatar(group.id, group.name), meta, move);
       this.list.append(card);
     }
   }
@@ -191,22 +157,51 @@ class GroupBoard {
     return group.id === "default" ? "default（默认）" : group.name;
   }
 
-  makeDraggable(element, id) {
+  makeDraggable(element, id, member = false) {
     element.draggable = true;
     element.addEventListener("dragstart", (event) => {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", id);
+      if (member) this.startMemberDrag(id);
       element.classList.add("dragging");
     });
     element.addEventListener("dragend", () => {
       element.classList.remove("dragging");
-      this.board
-        .querySelectorAll(".drag-over")
-        .forEach((target) => target.classList.remove("drag-over"));
+      this.endMemberDrag();
     });
   }
 
+  startMemberDrag(id) {
+    const overlay = document.createElement("div");
+    overlay.className = "drag-remove-overlay";
+    const hint = document.createElement("span");
+    hint.textContent = "拖到分组外，松开后停止监听";
+    overlay.append(hint);
+    overlay.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    });
+    overlay.addEventListener("drop", (event) => {
+      event.preventDefault();
+      this.endMemberDrag();
+      this.unassign(id);
+    });
+    this.dragOverlay = overlay;
+    document.body.classList.add("member-dragging");
+    document.body.append(overlay);
+  }
+
+  endMemberDrag() {
+    this.dragOverlay?.remove();
+    this.dragOverlay = null;
+    document.body.classList.remove("member-dragging");
+    this.board
+      .querySelectorAll(".drag-over")
+      .forEach((target) => target.classList.remove("drag-over"));
+  }
+
   renderBoard() {
+    if (this.dragOverlay) this.endMemberDrag();
     this.board.replaceChildren();
     const names = new Map(
       this.allGroups().map((group) => [group.id, group.name]),
@@ -262,10 +257,12 @@ class GroupBoard {
         remove.className = "remove-group";
         remove.textContent = "删除";
         remove.setAttribute("aria-label", `删除分组 ${group.name}`);
+        remove.title = "删除分组并停止监听其中的群聊";
         remove.addEventListener("click", () => {
-          this.state.todoist.groups
-            .find((item) => item.id === "default")
-            .group_ids.push(...group.group_ids);
+          const members = new Set(group.group_ids);
+          this.state.filter.groups = this.state.filter.groups.filter(
+            (id) => !members.has(id),
+          );
           this.state.todoist.groups = this.state.todoist.groups.filter(
             (item) => item.id !== group.id,
           );
@@ -288,8 +285,10 @@ class GroupBoard {
       });
       dropzone.addEventListener("drop", (event) => {
         event.preventDefault();
+        event.stopPropagation();
         dropzone.classList.remove("drag-over");
         const id = event.dataTransfer.getData("text/plain");
+        this.endMemberDrag();
         if (this.allGroups().some((item) => item.id === id))
           this.assign(id, group.id);
       });
@@ -302,16 +301,53 @@ class GroupBoard {
       for (const id of members) {
         const member = document.createElement("div");
         member.className = "member-chip";
-        this.makeDraggable(member, id);
+        this.makeDraggable(member, id, true);
         const name = names.get(id) || `群 ${id}`;
         const text = document.createElement("span");
         text.textContent = name;
-        member.append(groupAvatar(id, name), text);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "remove-member";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", `停止监听 ${name}`);
+        remove.addEventListener("click", () => this.unassign(id));
+        member.append(groupAvatar(id, name), text, remove);
         dropzone.append(member);
       }
-      card.append(header, dropzone, this.renderDestinations(group));
+      const output = document.createElement("label");
+      output.className = "group-output";
+      const outputText = document.createElement("span");
+      outputText.textContent = "写入 Todoist";
+      const toggle = document.createElement("span");
+      toggle.className = "switch";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = group.todoist_enabled;
+      checkbox.setAttribute(
+        "aria-label",
+        `${this.displayName(group)} 写入 Todoist`,
+      );
+      const destinations = this.renderDestinations(group);
+      destinations.hidden = !group.todoist_enabled;
+      checkbox.addEventListener("change", () => {
+        group.todoist_enabled = checkbox.checked;
+        destinations.hidden = !checkbox.checked;
+        this.updateCatalogMessage();
+        this.saveRouting();
+      });
+      const track = document.createElement("span");
+      track.className = "switch-track";
+      toggle.append(checkbox, track);
+      output.append(outputText, toggle);
+      card.append(header, dropzone, output, destinations);
       this.board.append(card);
     }
+    this.updateCatalogMessage();
+  }
+
+  updateCatalogMessage() {
+    document.querySelector("#catalog-message").hidden =
+      !this.state.todoist.groups.some((group) => group.todoist_enabled);
   }
 
   renderDestinations(group) {
@@ -447,6 +483,8 @@ class GroupBoard {
   }
 
   openMove(group) {
+    document.querySelector("#move-dialog h2").textContent =
+      this.state.filter.groups.includes(group.id) ? "移动群聊" : "加入分组";
     document.querySelector("#move-description").textContent =
       `选择 ${group.name} 的分组`;
     const options = document.querySelector("#move-options");
@@ -512,6 +550,7 @@ class GroupBoard {
           project_id: "",
           section_id: "",
           legacy_section: "",
+          todoist_enabled: false,
         });
       } else {
         const group = this.state.todoist.groups.find(

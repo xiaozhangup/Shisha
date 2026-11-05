@@ -5,6 +5,7 @@ from datetime import datetime
 
 import aiohttp
 
+from .config import todoist_group
 from .models import GroupMessage, Task
 
 
@@ -76,11 +77,7 @@ class TodoistClient:
             return await response.json()
 
     async def _destination(self, group_id: int) -> tuple[str, str]:
-        groups = self.config["groups"]
-        default = next(group for group in groups if group["id"] == "default")
-        selected = next(
-            (group for group in groups if str(group_id) in group["group_ids"]), default
-        )
+        selected = todoist_group(self.config, group_id)
         if not selected["legacy_section"]:
             return selected["project_id"], selected["section_id"]
         catalog = await self.catalog()

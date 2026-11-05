@@ -22,9 +22,11 @@ function renderStatus(status) {
         ? "连接中"
         : "等待配置";
   const detail = status.connected
-    ? status.configured
-      ? "正在监听群消息"
-      : "群消息收集中，待完成摘要配置"
+    ? !status.listening
+      ? "暂无监听群聊"
+      : status.configured
+        ? "正在监听群消息"
+        : "群消息收集中，待完成摘要配置"
     : status.error ||
       (status.configured ? "正在连接 SnowLuma" : "完成设置后开始监听");
   document
