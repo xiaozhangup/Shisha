@@ -6,6 +6,7 @@
     <meta name="color-scheme" content="light" />
     <title>Shisha - 设置</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/common.js" defer></script>
     <script src="/static/app.js" defer></script>
   </head>
   <body>
@@ -30,8 +31,13 @@
           ></span>
           <span class="brand-name">Shisha</span>
         </a>
-        <div class="side-label">配置</div>
-        <nav class="navigation" aria-label="设置导航">
+        <div class="side-label">菜单</div>
+        <nav class="navigation primary-nav" aria-label="页面导航">
+          <a class="active" href="/"><span class="nav-icon">01</span>设置</a>
+          <a href="/messages"><span class="nav-icon">02</span>消息</a>
+        </nav>
+        <div class="side-label section-links">设置</div>
+        <nav class="navigation section-links" aria-label="设置导航">
           <a href="#connection"><span class="nav-icon">01</span>连接</a>
           <a href="#rules"><span class="nav-icon">02</span>监听规则</a>
           <a href="#model"><span class="nav-icon">03</span>摘要模型</a>
@@ -72,22 +78,29 @@
               </div>
               <p>SnowLuma 的 OneBot 地址与令牌</p>
             </div>
-            <div class="fields two-columns">
+            <fieldset class="connection-mode">
+              <legend>连接方式</legend>
+              <label
+                ><input
+                  type="radio"
+                  name="snowluma.mode"
+                  value="ws"
+                  checked
+                /><span>WebSocket</span></label
+              >
+              <label
+                ><input type="radio" name="snowluma.mode" value="http" /><span
+                  >HTTP</span
+                ></label
+              >
+            </fieldset>
+            <div class="fields two-columns" data-connection="http" hidden>
               <label class="field"
                 ><span>HTTP 地址</span
                 ><input
                   name="snowluma.http_url"
                   type="url"
-                  required
                   placeholder="http://127.0.0.1:3000/"
-              /></label>
-              <label class="field"
-                ><span>WebSocket 地址</span
-                ><input
-                  name="snowluma.ws_url"
-                  type="url"
-                  required
-                  placeholder="ws://127.0.0.1:3001/"
               /></label>
               <label class="field"
                 ><span>HTTP 令牌</span
@@ -102,6 +115,19 @@
                   </button></span
                 ></label
               >
+              <small class="connection-hint full"
+                >在 SnowLuma 的 HTTP 服务中启用 SSE 事件流。</small
+              >
+            </div>
+            <div class="fields two-columns" data-connection="ws">
+              <label class="field"
+                ><span>WebSocket 地址</span
+                ><input
+                  name="snowluma.ws_url"
+                  type="url"
+                  required
+                  placeholder="ws://127.0.0.1:3001/"
+              /></label>
               <label class="field"
                 ><span>WebSocket 令牌</span
                 ><span class="secret"
@@ -134,6 +160,13 @@
                 </div>
                 <button type="button" id="refresh-groups">刷新</button>
               </div>
+              <label class="group-search"
+                ><span class="sr-only">搜索群聊</span
+                ><input
+                  type="search"
+                  id="group-search"
+                  placeholder="搜索群名或群号"
+              /></label>
               <div
                 class="group-list"
                 id="group-list"
@@ -143,15 +176,20 @@
                 <p class="group-empty">正在读取群列表…</p>
               </div>
             </div>
+            <label class="setting-toggle"
+              ><span>通知到群</span
+              ><span class="switch"
+                ><input type="checkbox" name="filter.notify_enabled" /><span
+                  class="switch-track"
+                ></span></span
+            ></label>
             <div class="fields two-columns">
               <label class="field"
-                ><span>通知群号</span
-                ><input
-                  name="filter.notification_group"
-                  type="text"
-                  inputmode="numeric"
-                  placeholder="接收摘要的群号"
-              /></label>
+                ><span>通知群聊</span
+                ><select name="filter.notification_group">
+                  <option value="">选择通知群聊</option>
+                </select></label
+              >
               <label class="field"
                 ><span>合并等待时间</span
                 ><span class="with-unit"
@@ -221,6 +259,13 @@
               </div>
               <p>将提取结果保存为任务</p>
             </div>
+            <label class="setting-toggle"
+              ><span>写入 Todoist</span
+              ><span class="switch"
+                ><input type="checkbox" name="todoist.enabled" /><span
+                  class="switch-track"
+                ></span></span
+            ></label>
             <div class="fields two-columns">
               <label class="field"
                 ><span>API 令牌</span

@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 DEFAULTS = {
     "snowluma": {
+        "mode": "ws",
         "http_url": "http://127.0.0.1:3000/",
         "ws_url": "ws://127.0.0.1:3001/",
         "http_token": "",
@@ -18,6 +19,7 @@ DEFAULTS = {
         "groups": [],
         "keywords": [],
         "notification_group": "",
+        "notify_enabled": True,
         "debounce_seconds": 30,
     },
     "ai": {
@@ -25,7 +27,7 @@ DEFAULTS = {
         "model": "glm-4.1v-thinking-flash",
         "api_key": "",
     },
-    "todoist": {"token": "", "section": ""},
+    "todoist": {"enabled": True, "token": "", "section": ""},
 }
 
 SECRETS = {
@@ -106,6 +108,9 @@ class ConfigStore:
                     config[section][name] = list(
                         dict.fromkeys(item.strip() for item in value if item.strip())
                     )
+                elif isinstance(default, bool):
+                    if type(value) is not bool:
+                        raise TypeError(f"{section}.{name} 必须是开关")
                 elif isinstance(default, int):
                     if type(value) is not int or not 1 <= value <= 300:
                         raise ValueError("合并等待时间应为 1–300 秒")
@@ -113,20 +118,25 @@ class ConfigStore:
                     raise TypeError(f"{section}.{name} 必须是文本")
                 else:
                     config[section][name] = value.strip()
-        for key, schemes in (
-            ("http_url", {"http", "https"}),
-            ("ws_url", {"ws", "wss"}),
+        connection = config["snowluma"]
+        mode = connection["mode"]
+        if mode not in {"http", "ws"}:
+            raise ValueError("请选择 HTTP 或 WebSocket")
+        key, schemes = (
+            ("http_url", {"http", "https"})
+            if mode == "http"
+            else ("ws_url", {"ws", "wss"})
+        )
+        parsed = urlsplit(connection[key])
+        if (
+            parsed.scheme not in schemes
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.fragment
+            or (mode == "http" and parsed.query)
         ):
-            parsed = urlsplit(config["snowluma"][key])
-            if (
-                parsed.scheme not in schemes
-                or not parsed.hostname
-                or parsed.username
-                or parsed.password
-                or parsed.fragment
-                or (key == "http_url" and parsed.query)
-            ):
-                raise ValueError(f"SnowLuma {key} 地址无效")
+            raise ValueError(f"SnowLuma {key} 地址无效")
         parsed = urlsplit(config["ai"]["base_url"])
         if (
             parsed.scheme not in {"http", "https"}
@@ -153,19 +163,23 @@ class ConfigStore:
         c = self.value
         return bool(
             c["filter"]["groups"]
-            and c["filter"]["notification_group"]
             and c["ai"]["model"]
             and c["ai"]["api_key"]
-            and c["todoist"]["token"]
+            and (not c["filter"]["notify_enabled"] or c["filter"]["notification_group"])
+            and (not c["todoist"]["enabled"] or c["todoist"]["token"])
         )
 
-    def http_settings(self, submitted: dict) -> dict:
+    def connection_settings(self, submitted: dict) -> dict:
         candidate = deepcopy(self.value)
-        candidate["snowluma"]["http_url"] = submitted.get("http_url")
-        token = submitted.get("http_token")
+        mode = submitted.get("mode")
+        if mode not in {"http", "ws"}:
+            raise ValueError("请选择 HTTP 或 WebSocket")
+        candidate["snowluma"]["mode"] = mode
+        candidate["snowluma"][f"{mode}_url"] = submitted.get("url")
+        token = submitted.get("token")
         if submitted.get("clear_token") is True:
-            candidate["snowluma"]["http_token"] = ""
+            candidate["snowluma"][f"{mode}_token"] = ""
         elif token:
-            candidate["snowluma"]["http_token"] = token
+            candidate["snowluma"][f"{mode}_token"] = token
         self._validate(candidate)
         return candidate["snowluma"]

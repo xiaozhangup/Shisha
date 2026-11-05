@@ -16,3 +16,6 @@ Source = "https://github.com/xiaozhangup/Shisha"
 
 [tool.setuptools.package-data]
 shisha = ["static/*"]
+
+[tool.setuptools.packages.find]
+include = ["shisha", "shisha.*"]

@@ -30,7 +30,7 @@ async def main() -> None:
         await site.start()
         port = runner.addresses[0][1]
         logging.getLogger("shisha").info("配置页面：http://127.0.0.1:%s", port)
-        worker.apply()
+        await worker.apply()
         stopped = asyncio.Event()
         loop = asyncio.get_running_loop()
         for name in (signal.SIGINT, signal.SIGTERM):

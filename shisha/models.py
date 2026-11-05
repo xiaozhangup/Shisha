@@ -10,6 +10,8 @@ class GroupMessage:
     at_all: bool
     received_at: float
     group_name: str = ""
+    sender_name: str = ""
+    event_time: int = 0
 
 
 @dataclass(frozen=True, slots=True)

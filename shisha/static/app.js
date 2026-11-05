@@ -3,8 +3,11 @@ const toast = document.querySelector(".toast");
 const clearedSecrets = new Set();
 const groupList = document.querySelector("#group-list");
 const groupCount = document.querySelector("#group-count");
+const groupSearch = document.querySelector("#group-search");
 const refreshGroups = document.querySelector("#refresh-groups");
+const notificationSelect = form.elements.namedItem("filter.notification_group");
 let selectedGroups = new Set();
+let selectedNotification = "";
 let availableGroups = [];
 let groupMessage = "正在读取群列表…";
 let groupError = "";
@@ -19,35 +22,45 @@ function notice(message, error = false) {
   toastTimer = setTimeout(() => toast.classList.remove("visible"), 3000);
 }
 
-function renderStatus(status) {
-  const label = !status.configured
-    ? "等待配置"
-    : status.connected
-      ? "已连接"
-      : "连接中";
-  const detail = !status.configured
-    ? "完成设置后开始监听"
-    : status.connected
-      ? "正在监听群消息"
-      : status.error || "正在连接 SnowLuma";
-  document
-    .querySelectorAll("[data-status]")
-    .forEach((node) => (node.textContent = label));
-  document
-    .querySelectorAll("[data-status-detail]")
-    .forEach((node) => (node.textContent = detail));
-  document.querySelectorAll("[data-status-dot]").forEach((node) => {
-    node.classList.toggle("online", status.connected);
-    node.classList.toggle("error", Boolean(status.error));
-  });
+function mode() {
+  return form.querySelector('input[name="snowluma.mode"]:checked').value;
+}
+
+function updateMode() {
+  for (const section of document.querySelectorAll("[data-connection]")) {
+    const active = section.dataset.connection === mode();
+    section.hidden = !active;
+    section
+      .querySelectorAll("input, button")
+      .forEach((input) => (input.disabled = !active));
+    section.querySelector('input[type="url"]').required = active;
+  }
+}
+
+function updateOutputToggles() {
+  notificationSelect.disabled = !form.elements.namedItem(
+    "filter.notify_enabled",
+  ).checked;
+  const todoistEnabled = form.elements.namedItem("todoist.enabled").checked;
+  for (const element of document.querySelectorAll(
+    '#todoist input:not([name="todoist.enabled"]), #todoist .secret button',
+  )) {
+    element.disabled = !todoistEnabled;
+  }
 }
 
 function renderConfig(config) {
   selectedGroups = new Set(config.filter.groups);
-  for (const input of form.querySelectorAll("input[name], textarea[name]")) {
+  selectedNotification = config.filter.notification_group;
+  for (const input of form.querySelectorAll(
+    "input[name], textarea[name], select[name]",
+  )) {
     const [section, key] = input.name.split(".");
     const value = config[section][key];
-    input.value = Array.isArray(value) ? value.join("\n") : value;
+    if (input.type === "radio") input.checked = input.value === value;
+    else if (input.type === "checkbox") input.checked = value;
+    else if (input === notificationSelect) continue;
+    else input.value = Array.isArray(value) ? value.join("\n") : value;
     if (input.type === "password") {
       input.placeholder = config[section][`${key}_saved`]
         ? "已保存，留空则保留"
@@ -61,16 +74,42 @@ function renderConfig(config) {
     button.classList.remove("active");
     button.textContent = "清除";
   });
+  updateMode();
+  updateOutputToggles();
   renderGroups();
+}
+
+function allGroups() {
+  const groups = [...availableGroups];
+  const known = new Set(groups.map((group) => group.id));
+  for (const id of [...selectedGroups, selectedNotification]) {
+    if (id && !known.has(id)) {
+      groups.push({ id, name: `群 ${id}` });
+      known.add(id);
+    }
+  }
+  return groups;
+}
+
+function renderNotificationOptions(groups) {
+  notificationSelect.replaceChildren(new Option("选择通知群聊", ""));
+  for (const group of groups)
+    notificationSelect.add(new Option(`${group.name} (${group.id})`, group.id));
+  notificationSelect.value = selectedNotification;
 }
 
 function renderGroups() {
   groupList.replaceChildren();
-  const groups = [...availableGroups];
-  const known = new Set(groups.map((group) => group.id));
-  for (const id of selectedGroups) {
-    if (!known.has(id)) groups.push({ id, name: `群 ${id}` });
-  }
+  const groups = allGroups();
+  renderNotificationOptions(groups);
+  const query = groupSearch.value.trim().toLocaleLowerCase();
+  const visible = groups.filter((group) =>
+    `${group.name} ${group.id}`.toLocaleLowerCase().includes(query),
+  );
+  visible.sort(
+    (a, b) =>
+      Number(selectedGroups.has(b.id)) - Number(selectedGroups.has(a.id)),
+  );
   groupCount.textContent = selectedGroups.size
     ? `已开启 ${selectedGroups.size} 个`
     : "选择要监听的群聊";
@@ -80,19 +119,16 @@ function renderGroups() {
     message.textContent = groupError;
     groupList.append(message);
   }
-  if (!groups.length) {
+  if (!visible.length) {
     const message = document.createElement("p");
     message.className = "group-empty";
-    message.textContent = groupMessage;
+    message.textContent = query ? "没有匹配的群聊" : groupMessage;
     groupList.append(message);
     return;
   }
-  for (const group of groups) {
+  for (const group of visible) {
     const row = document.createElement("label");
     row.className = "group-row";
-    const avatar = document.createElement("span");
-    avatar.className = "group-avatar";
-    avatar.textContent = [...group.name.trim()][0] || "群";
     const meta = document.createElement("span");
     meta.className = "group-meta";
     const name = document.createElement("span");
@@ -111,20 +147,25 @@ function renderGroups() {
     input.addEventListener("change", () => {
       if (input.checked) selectedGroups.add(group.id);
       else selectedGroups.delete(group.id);
-      groupCount.textContent = selectedGroups.size
-        ? `已开启 ${selectedGroups.size} 个`
-        : "选择要监听的群聊";
+      renderGroups();
+      groupList
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach((checkbox) => {
+          if (checkbox.getAttribute("aria-label") === `监听 ${group.name}`)
+            checkbox.focus({ preventScroll: true });
+        });
     });
     const track = document.createElement("span");
     track.className = "switch-track";
     toggle.append(input, track);
-    row.append(avatar, meta, toggle);
+    row.append(groupAvatar(group.id, group.name), meta, toggle);
     groupList.append(row);
   }
 }
 
 async function loadGroups() {
   const requestId = ++groupRequest;
+  const currentMode = mode();
   refreshGroups.disabled = true;
   groupMessage = "正在读取群列表…";
   groupError = "";
@@ -134,9 +175,14 @@ async function loadGroups() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        http_url: form.elements.namedItem("snowluma.http_url").value.trim(),
-        http_token: form.elements.namedItem("snowluma.http_token").value.trim(),
-        clear_token: clearedSecrets.has("snowluma.http_token"),
+        mode: currentMode,
+        url: form.elements
+          .namedItem(`snowluma.${currentMode}_url`)
+          .value.trim(),
+        token: form.elements
+          .namedItem(`snowluma.${currentMode}_token`)
+          .value.trim(),
+        clear_token: clearedSecrets.has(`snowluma.${currentMode}_token`),
       }),
     });
     const data = await response.json();
@@ -158,6 +204,23 @@ async function loadGroups() {
 }
 
 refreshGroups.addEventListener("click", loadGroups);
+groupSearch.addEventListener("input", renderGroups);
+notificationSelect.addEventListener(
+  "change",
+  () => (selectedNotification = notificationSelect.value),
+);
+form.querySelectorAll('input[name="snowluma.mode"]').forEach((input) =>
+  input.addEventListener("change", () => {
+    updateMode();
+    availableGroups = [];
+    loadGroups();
+  }),
+);
+form
+  .querySelectorAll(
+    'input[name="filter.notify_enabled"], input[name="todoist.enabled"]',
+  )
+  .forEach((input) => input.addEventListener("change", updateOutputToggles));
 
 function splitItems(value) {
   return value
@@ -174,11 +237,15 @@ function serialize() {
     todoist: {},
     clear_secrets: [...clearedSecrets],
   };
-  for (const input of form.querySelectorAll("input[name], textarea[name]")) {
+  for (const input of form.querySelectorAll(
+    "input[name], textarea[name], select[name]",
+  )) {
+    if (input.type === "radio" && !input.checked) continue;
     const [section, key] = input.name.split(".");
-    let value = input.value.trim();
+    let value = input.type === "checkbox" ? input.checked : input.value.trim();
     if (input.tagName === "TEXTAREA") value = splitItems(value);
     if (input.type === "number") value = Number(value);
+    if (input === notificationSelect) value = selectedNotification;
     result[section][key] = value;
   }
   result.filter.groups = [...selectedGroups];
@@ -203,16 +270,15 @@ form.querySelectorAll("[data-clear]").forEach((button) => {
     }
   });
 });
-
-form.querySelectorAll('input[type="password"]').forEach((input) => {
+form.querySelectorAll('input[type="password"]').forEach((input) =>
   input.addEventListener("input", () => {
     if (!input.value) return;
     clearedSecrets.delete(input.name);
     const button = form.querySelector(`[data-clear="${input.name}"]`);
     button.classList.remove("active");
     button.textContent = "清除";
-  });
-});
+  }),
+);
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -236,19 +302,6 @@ form.addEventListener("submit", async (event) => {
     buttons.forEach((button) => (button.disabled = false));
   }
 });
-
-async function refreshStatus() {
-  try {
-    const response = await fetch("/api/status");
-    if (response.ok) renderStatus(await response.json());
-  } catch (_) {
-    renderStatus({
-      configured: true,
-      connected: false,
-      error: "配置服务已断开",
-    });
-  }
-}
 
 (async () => {
   try {

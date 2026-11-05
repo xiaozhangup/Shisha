@@ -8,16 +8,10 @@ import time
 import aiohttp
 
 from .models import GroupMessage
+from .transport import TransportError as SnowLumaError
+from .transport import WebSocketTransport, authorization
 
 log = logging.getLogger("shisha")
-
-
-class SnowLumaError(RuntimeError):
-    pass
-
-
-def authorization(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def parse_cq(message: str) -> list[dict]:
@@ -46,11 +40,22 @@ def parse_cq(message: str) -> list[dict]:
 
 
 class SnowLumaClient:
-    def __init__(self, session: aiohttp.ClientSession, config: dict):
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        config: dict,
+        transport: WebSocketTransport | None = None,
+    ):
         self.session = session
         self.config = config
+        self.transport = transport
 
     async def action(self, name: str, params: dict) -> object:
+        if self.config["mode"] == "ws":
+            if self.transport and self.transport.connected:
+                return await self.transport.action(name, params)
+            async with WebSocketTransport(self.session, self.config) as transport:
+                return await transport.action(name, params)
         url = f"{self.config['http_url'].rstrip('/')}/{name}"
         async with self.session.post(
             url,
@@ -76,6 +81,12 @@ class SnowLumaClient:
             at_all=at_all,
             received_at=time.monotonic(),
             group_name=str(event.get("group_name") or ""),
+            sender_name=str(
+                (event.get("sender") or {}).get("card")
+                or (event.get("sender") or {}).get("nickname")
+                or event["user_id"]
+            ),
+            event_time=int(event.get("time") or time.time()),
         )
 
     async def _render(
