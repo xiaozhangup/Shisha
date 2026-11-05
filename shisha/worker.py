@@ -264,6 +264,7 @@ class Worker:
         if message is None:
             message = await client.get_message(message_id)
         if message.group_id == group_id and message.text.strip():
+            self.history.save_message(message)
             await self._process(message, message.text, [message], config, manual=True)
 
     async def _notify(

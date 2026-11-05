@@ -133,6 +133,37 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
         except ValueError:
             return web.json_response({"error": "记录查询参数无效"}, status=400)
 
+    async def conversations(request: web.Request) -> web.Response:
+        return web.json_response(
+            {
+                "groups": worker.history.conversation_groups(
+                    config.value["filter"]["groups"]
+                )
+            }
+        )
+
+    async def conversation(request: web.Request) -> web.Response:
+        group_id = request.match_info["group_id"]
+        if group_id not in config.value["filter"]["groups"]:
+            raise web.HTTPNotFound()
+        try:
+            values = {}
+            for key in ("before", "after", "range_start"):
+                if key in request.query:
+                    value = int(request.query[key])
+                    if not 0 < value < 9223372036854775807:
+                        raise ValueError
+                    values[key] = value
+            if (
+                ("before" in values and "after" in values)
+                or ("range_start" in values and "after" not in values)
+                or ("range_start" in values and values["range_start"] > values["after"])
+            ):
+                raise ValueError
+            return web.json_response(worker.history.conversation(group_id, **values))
+        except ValueError:
+            return web.json_response({"error": "记录查询参数无效"}, status=400)
+
     async def todoist_catalog(request: web.Request) -> web.Response:
         if not config.value["todoist"]["token"]:
             return web.json_response({"error": "请先填写 Todoist 令牌"}, status=400)
@@ -203,6 +234,8 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
     app.router.add_get("/api/status", status)
     app.router.add_post("/api/groups", groups)
     app.router.add_get("/api/messages", history)
+    app.router.add_get("/api/conversations", conversations)
+    app.router.add_get("/api/conversations/{group_id}", conversation)
     app.router.add_get("/api/todoist/catalog", todoist_catalog)
     app.router.add_post("/api/todoist/{kind}", todoist_create)
     app.router.add_static("/static/", STATIC)

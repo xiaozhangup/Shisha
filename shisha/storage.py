@@ -48,6 +48,7 @@ class History:
                 PRIMARY KEY(request_id, group_id, message_id)
             );
             CREATE INDEX IF NOT EXISTS received_group_id ON received_messages(group_id, id);
+            CREATE INDEX IF NOT EXISTS ai_group_id ON ai_requests(group_id, id);
             CREATE INDEX IF NOT EXISTS ai_message_lookup ON ai_request_messages(group_id, message_id);
         """)
         self.db.commit()
@@ -156,6 +157,99 @@ class History:
         return {
             "items": [dict(row) for row in rows[:limit]],
             "next_before": rows[limit - 1]["id"] if len(rows) > limit else None,
+        }
+
+    def conversation_groups(self, groups: list[str]) -> list[dict]:
+        result = []
+        for group_id in groups:
+            latest = self.db.execute(
+                """SELECT id, text, event_time FROM received_messages
+                   WHERE group_id = ? ORDER BY id DESC LIMIT 1""",
+                (group_id,),
+            ).fetchone()
+            named = self.db.execute(
+                """SELECT group_name FROM received_messages
+                   WHERE group_id = ? AND group_name != '' ORDER BY id DESC LIMIT 1""",
+                (group_id,),
+            ).fetchone()
+            result.append(
+                {
+                    "id": group_id,
+                    "name": named["group_name"] if named else "",
+                    "latest": dict(latest) if latest else None,
+                }
+            )
+        result.sort(
+            key=lambda item: item["latest"]["id"] if item["latest"] else 0, reverse=True
+        )
+        return result
+
+    def conversation(
+        self,
+        group_id: str,
+        before: int | None = None,
+        after: int | None = None,
+        range_start: int | None = None,
+        limit: int = 80,
+    ) -> dict:
+        if after is not None:
+            rows = self.db.execute(
+                """SELECT * FROM received_messages WHERE group_id = ? AND id > ?
+                   ORDER BY id ASC LIMIT ?""",
+                (group_id, after, limit + 1),
+            ).fetchall()
+            items = rows[:limit]
+            next_after = items[-1]["id"] if len(rows) > limit else None
+            next_before = None
+            first = range_start or (items[0]["id"] if items else after)
+            last = items[-1]["id"] if items else after
+        else:
+            rows = self.db.execute(
+                """SELECT * FROM received_messages WHERE group_id = ? AND id < ?
+                   ORDER BY id DESC LIMIT ?""",
+                (group_id, before or 9223372036854775807, limit + 1),
+            ).fetchall()
+            items = list(reversed(rows[:limit]))
+            next_before = items[0]["id"] if len(rows) > limit else None
+            next_after = None
+            first = items[0]["id"] if items else 0
+            last = items[-1]["id"] if items else 0
+
+        requests = self.db.execute(
+            """SELECT a.*, MIN(m.id) AS first_message_row,
+                      MAX(m.id) AS last_message_row, GROUP_CONCAT(m.id) AS message_rows
+               FROM ai_requests a
+               JOIN ai_request_messages am ON am.request_id = a.id
+               JOIN received_messages m ON m.group_id = am.group_id AND m.message_id = am.message_id
+               WHERE a.group_id = ?
+               GROUP BY a.id
+               HAVING first_message_row <= ? AND last_message_row >= ?
+               ORDER BY first_message_row, a.id""",
+            (group_id, last, first),
+        ).fetchall()
+        batches = []
+        for row in requests:
+            batch = dict(row)
+            batch["message_rows"] = [
+                int(value) for value in batch["message_rows"].split(",")
+            ]
+            batches.append(batch)
+
+        unanchored = self.db.execute(
+            """SELECT a.* FROM ai_requests a WHERE a.group_id = ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM ai_request_messages am
+                   JOIN received_messages m ON m.group_id = am.group_id AND m.message_id = am.message_id
+                   WHERE am.request_id = a.id
+               ) ORDER BY a.id""",
+            (group_id,),
+        ).fetchall()
+        return {
+            "items": [dict(row) for row in items],
+            "requests": batches,
+            "unanchored": [dict(row) for row in unanchored],
+            "next_before": next_before,
+            "next_after": next_after,
         }
 
     def close(self) -> None:

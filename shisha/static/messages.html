@@ -12,12 +12,12 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar" data-navigation></aside>
-      <main class="main" id="top">
+      <main class="main messages-main" id="top">
         <div class="page-header">
           <div>
             <p class="eyebrow">SHISHA / MESSAGES</p>
             <h1>消息</h1>
-            <p class="intro">查看群消息和提交给 AI 的内容。</p>
+            <p class="intro">查看群聊记录和对应的摘要。</p>
           </div>
           <button
             class="icon-button"
@@ -45,26 +45,24 @@
           ><strong data-status>等待配置</strong
           ><span data-status-detail>完成设置后开始监听</span>
         </div>
-        <div class="message-tabs" role="tablist" aria-label="消息类型">
-          <button
-            class="active"
-            type="button"
-            role="tab"
-            aria-selected="true"
-            data-kind="messages"
-          >
-            群消息
-          </button>
-          <button type="button" role="tab" aria-selected="false" data-kind="ai">
-            AI 摘要
-          </button>
+        <div class="conversation-layout">
+          <aside class="conversation-groups" aria-label="监听群聊">
+            <div class="conversation-groups-heading">群聊</div>
+            <div id="conversation-groups" class="conversation-group-list">
+              <p class="conversation-placeholder">正在读取…</p>
+            </div>
+          </aside>
+          <section class="conversation-pane" aria-label="群消息">
+            <header id="conversation-heading" class="conversation-heading">
+              <strong>选择群聊</strong>
+            </header>
+            <div id="conversation-scroll" class="conversation-scroll">
+              <div id="conversation-content" class="conversation-content">
+                <p class="conversation-empty">选择一个群聊查看消息。</p>
+              </div>
+            </div>
+          </section>
         </div>
-        <div id="message-list" class="message-list" aria-live="polite">
-          <p class="message-empty">正在读取…</p>
-        </div>
-        <button id="load-more" class="load-more" type="button" hidden>
-          加载更多
-        </button>
       </main>
     </div>
   </body>
