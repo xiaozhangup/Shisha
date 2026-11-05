@@ -36,6 +36,12 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
     async def messages_page(request: web.Request) -> web.FileResponse:
         return web.FileResponse(STATIC / "messages.html")
 
+    async def groups_page(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(STATIC / "groups.html")
+
+    async def rules_page(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(STATIC / "rules.html")
+
     async def get_config(request: web.Request) -> web.Response:
         return web.json_response({"config": config.public(), "status": worker.status()})
 
@@ -175,6 +181,8 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
     app = web.Application(middlewares=[local_only], client_max_size=128 * 1024)
     app.router.add_get("/", index)
     app.router.add_get("/messages", messages_page)
+    app.router.add_get("/groups", groups_page)
+    app.router.add_get("/rules", rules_page)
     app.router.add_get("/api/config", get_config)
     app.router.add_post("/api/config", save_config)
     app.router.add_patch("/api/config", patch_config)

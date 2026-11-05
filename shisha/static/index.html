@@ -8,64 +8,22 @@
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/common.js" defer></script>
     <script src="/static/autosave.js" defer></script>
-    <script src="/static/group-editor.js" defer></script>
     <script src="/static/app.js" defer></script>
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="#top" aria-label="Shisha 首页">
-          <span class="brand-mark" aria-hidden="true"
-            ><svg viewBox="0 0 36 36" fill="none">
-              <path
-                d="M22.8 9.2c-1.8-1.3-4.1-1.9-6.3-1.4-2.2.4-3.7 1.8-3.7 3.6 0 4.7 10.2 2.6 10.2 8 0 2.2-2 3.9-4.8 4.2-2.5.3-5-.5-6.8-2"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-              />
-              <path
-                d="M12 28h12"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                opacity=".55"
-              /></svg
-          ></span>
-          <span class="brand-name">Shisha</span>
-        </a>
-        <div class="side-label">菜单</div>
-        <nav class="navigation primary-nav" aria-label="页面导航">
-          <a class="active" href="/"><span class="nav-icon">01</span>设置</a>
-          <a href="/messages"><span class="nav-icon">02</span>消息</a>
-        </nav>
-        <div class="side-label section-links">设置</div>
-        <nav class="navigation section-links" aria-label="设置导航">
-          <a href="#connection"><span class="nav-icon">01</span>连接</a>
-          <a href="#rules"><span class="nav-icon">02</span>监听规则</a>
-          <a href="#model"><span class="nav-icon">03</span>摘要模型</a>
-          <a href="#todoist"><span class="nav-icon">04</span>Todoist</a>
-        </nav>
-        <div class="side-footer">
-          <span class="status-dot" data-status-dot></span>
-          <div>
-            <strong data-status>等待配置</strong
-            ><span data-status-detail>完成设置后开始监听</span>
-          </div>
-        </div>
-      </aside>
-
+      <aside class="sidebar" data-navigation></aside>
       <main class="main" id="top">
         <div class="page-header">
           <div>
             <p class="eyebrow">SHISHA / SETTINGS</p>
             <h1>设置</h1>
-            <p class="intro">连接群聊，整理通知中的任务。</p>
+            <p class="intro">连接服务并管理密钥。</p>
           </div>
           <span class="save-state" data-save-state role="status"
             >设置自动保存</span
           >
         </div>
-
         <div class="mobile-status">
           <span class="status-dot" data-status-dot></span
           ><strong data-status>等待配置</strong
@@ -76,9 +34,9 @@
             <div class="section-heading">
               <div>
                 <span class="section-number">01</span>
-                <h2>连接</h2>
+                <h2>SnowLuma</h2>
               </div>
-              <p>SnowLuma 的 OneBot 地址与令牌</p>
+              <p>OneBot 连接</p>
             </div>
             <fieldset class="connection-mode">
               <legend>连接方式</legend>
@@ -89,13 +47,36 @@
                   value="ws"
                   checked
                 /><span>WebSocket</span></label
-              >
-              <label
+              ><label
                 ><input type="radio" name="snowluma.mode" value="http" /><span
                   >HTTP</span
                 ></label
               >
             </fieldset>
+            <div class="fields two-columns" data-connection="ws">
+              <label class="field"
+                ><span>WebSocket 地址</span
+                ><input
+                  name="snowluma.ws_url"
+                  type="url"
+                  placeholder="ws://127.0.0.1:3001/"
+              /></label>
+              <label class="field"
+                ><span>WebSocket 令牌</span
+                ><span class="secret"
+                  ><input
+                    name="snowluma.ws_token"
+                    type="password"
+                    autocomplete="new-password"
+                  /><button type="button" data-clear="snowluma.ws_token">
+                    清除
+                  </button></span
+                ></label
+              >
+              <small class="connection-hint full"
+                >使用支持收发的 Universal 连接。</small
+              >
+            </div>
             <div class="fields two-columns" data-connection="http" hidden>
               <label class="field"
                 ><span>HTTP 地址</span
@@ -111,7 +92,6 @@
                     name="snowluma.http_token"
                     type="password"
                     autocomplete="new-password"
-                    placeholder="可留空"
                   /><button type="button" data-clear="snowluma.http_token">
                     清除
                   </button></span
@@ -121,127 +101,19 @@
                 >在 SnowLuma 的 HTTP 服务中启用 SSE 事件流。</small
               >
             </div>
-            <div class="fields two-columns" data-connection="ws">
-              <label class="field"
-                ><span>WebSocket 地址</span
-                ><input
-                  name="snowluma.ws_url"
-                  type="url"
-                  required
-                  placeholder="ws://127.0.0.1:3001/"
-              /></label>
-              <label class="field"
-                ><span>WebSocket 令牌</span
-                ><span class="secret"
-                  ><input
-                    name="snowluma.ws_token"
-                    type="password"
-                    autocomplete="new-password"
-                    placeholder="可留空"
-                  /><button type="button" data-clear="snowluma.ws_token">
-                    清除
-                  </button></span
-                ></label
-              >
-              <small class="connection-hint full"
-                >使用支持收发的 Universal 连接。</small
-              >
-            </div>
           </section>
-
-          <section class="settings-section" id="rules">
-            <div class="section-heading">
-              <div>
-                <span class="section-number">02</span>
-                <h2>监听规则</h2>
-              </div>
-              <p>关键词或 @全体成员 触发摘要</p>
-            </div>
-            <div class="group-setting">
-              <div class="group-heading">
-                <div>
-                  <span>监听群聊</span
-                  ><small id="group-count">读取当前账号的群聊</small>
-                </div>
-                <div class="group-actions">
-                  <button type="button" id="add-group">新建分组</button
-                  ><button type="button" id="refresh-groups">刷新</button>
-                </div>
-              </div>
-              <label class="group-search"
-                ><span class="sr-only">搜索群聊</span
-                ><input
-                  type="search"
-                  id="group-search"
-                  placeholder="搜索群名或群号"
-              /></label>
-              <div
-                class="group-list"
-                id="group-list"
-                role="group"
-                aria-label="监听群聊"
-              >
-                <p class="group-empty">正在读取群列表…</p>
-              </div>
-            </div>
-            <label class="setting-toggle"
-              ><span>通知到群</span
-              ><span class="switch"
-                ><input type="checkbox" name="filter.notify_enabled" /><span
-                  class="switch-track"
-                ></span></span
-            ></label>
-            <div class="fields two-columns">
-              <label class="field"
-                ><span>通知群聊</span
-                ><select name="filter.notification_group">
-                  <option value="">选择通知群聊</option>
-                </select></label
-              >
-              <label class="field"
-                ><span>合并等待时间</span
-                ><span class="with-unit"
-                  ><input
-                    name="filter.debounce_seconds"
-                    type="number"
-                    min="1"
-                    max="300"
-                    required
-                  /><span>秒</span></span
-                ><small>同一发送者的相邻消息会合并处理</small></label
-              >
-              <div class="field full">
-                <span>触发关键词</span>
-                <div id="keyword-editor" class="keyword-editor">
-                  <div id="keyword-list" class="keyword-list"></div>
-                  <label class="keyword-entry"
-                    ><span class="sr-only">添加关键词</span
-                    ><input
-                      id="keyword-input"
-                      type="text"
-                      placeholder="输入关键词，按回车添加"
-                  /></label>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section class="settings-section" id="model">
             <div class="section-heading">
               <div>
-                <span class="section-number">03</span>
-                <h2>摘要模型</h2>
+                <span class="section-number">02</span>
+                <h2>AI 模型</h2>
               </div>
               <p>兼容 Chat Completions 的 API</p>
             </div>
             <div class="fields two-columns">
               <label class="field"
                 ><span>API 地址</span
-                ><input
-                  name="ai.base_url"
-                  type="url"
-                  required
-                  placeholder="https://..."
+                ><input name="ai.base_url" type="url" placeholder="https://..."
               /></label>
               <label class="field"
                 ><span>模型名称</span
@@ -254,7 +126,6 @@
                     name="ai.api_key"
                     type="password"
                     autocomplete="new-password"
-                    placeholder="输入 API 密钥"
                   /><button type="button" data-clear="ai.api_key">
                     清除
                   </button></span
@@ -262,68 +133,28 @@
               >
             </div>
           </section>
-
-          <section class="settings-section last" id="todoist">
+          <section class="settings-section" id="todoist">
             <div class="section-heading">
               <div>
-                <span class="section-number">04</span>
+                <span class="section-number">03</span>
                 <h2>Todoist</h2>
               </div>
-              <p>将提取结果保存为任务</p>
+              <p>API 访问</p>
             </div>
-            <label class="setting-toggle"
-              ><span>写入 Todoist</span
-              ><span class="switch"
-                ><input type="checkbox" name="todoist.enabled" /><span
-                  class="switch-track"
-                ></span></span
-            ></label>
-            <div class="fields">
-              <label class="field"
-                ><span>API 令牌</span
-                ><span class="secret"
-                  ><input
-                    name="todoist.token"
-                    type="password"
-                    autocomplete="new-password"
-                    placeholder="输入 Todoist 令牌"
-                  /><button type="button" data-clear="todoist.token">
-                    清除
-                  </button></span
-                ></label
-              >
-            </div>
-            <div class="targets-heading">
-              <div>
-                <span>分组目标</span
-                ><small>每个分组对应一个 Todoist 位置</small>
-              </div>
-              <button type="button" id="refresh-todoist">刷新</button>
-            </div>
-            <div id="todoist-groups" class="todoist-groups"></div>
+            <label class="field"
+              ><span>API 令牌</span
+              ><span class="secret"
+                ><input
+                  name="todoist.token"
+                  type="password"
+                  autocomplete="new-password"
+                /><button type="button" data-clear="todoist.token">
+                  清除
+                </button></span
+              ></label
+            >
           </section>
         </form>
-        <dialog id="create-dialog" class="create-dialog">
-          <form id="create-form">
-            <p class="eyebrow">SHISHA / CREATE</p>
-            <h2 id="create-title"></h2>
-            <p id="create-description" class="dialog-description"></p>
-            <label class="field"
-              ><span>名称</span
-              ><input
-                id="create-name"
-                type="text"
-                autocomplete="off"
-                required
-                maxlength="120"
-            /></label>
-            <p id="create-error" class="dialog-error" role="alert"></p>
-            <div class="dialog-actions">
-              <button id="create-cancel" type="button">取消</button
-              ><button id="create-submit" type="submit">创建</button>
-            </div>
-          </form>
-        </dialog>
         <div class="toast" role="status" aria-live="polite"></div>
       </main>
     </div>

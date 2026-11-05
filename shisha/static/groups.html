@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Shisha - 分组</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/common.js" defer></script>
+    <script src="/static/autosave.js" defer></script>
+    <script src="/static/groups.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" data-navigation></aside>
+      <main class="main groups-main">
+        <div class="page-header">
+          <div>
+            <p class="eyebrow">SHISHA / GROUPS</p>
+            <h1>群聊分组</h1>
+            <p class="intro">选择要监听的群聊，拖动到对应分组。</p>
+          </div>
+          <span class="save-state" data-save-state role="status"
+            >设置自动保存</span
+          >
+        </div>
+        <div class="mobile-status">
+          <span class="status-dot" data-status-dot></span
+          ><strong data-status>等待配置</strong
+          ><span data-status-detail>完成设置后开始监听</span>
+        </div>
+        <div class="groups-toolbar">
+          <label class="setting-toggle todoist-toggle"
+            ><span>写入 Todoist</span
+            ><span class="switch"
+              ><input id="todoist-enabled" type="checkbox" /><span
+                class="switch-track"
+              ></span></span
+          ></label>
+          <div class="board-actions">
+            <button class="quiet-button" id="refresh-todoist" type="button">
+              刷新项目</button
+            ><button class="primary-button" id="add-group" type="button">
+              新建分组
+            </button>
+          </div>
+        </div>
+        <div class="groups-board">
+          <section class="library-panel" aria-labelledby="library-title">
+            <div class="panel-heading">
+              <div>
+                <h2 id="library-title">所有群聊</h2>
+                <p id="group-count">正在读取…</p>
+              </div>
+              <button class="quiet-button" id="refresh-groups" type="button">
+                刷新
+              </button>
+            </div>
+            <label class="group-search"
+              ><span class="sr-only">搜索群聊</span
+              ><input
+                id="group-search"
+                type="search"
+                placeholder="搜索群名或群号"
+            /></label>
+            <div class="library-list" id="group-list" aria-live="polite">
+              <p class="group-empty">正在读取群列表…</p>
+            </div>
+          </section>
+          <section class="board-panel" aria-labelledby="board-title">
+            <div class="board-heading">
+              <div>
+                <h2 id="board-title">分组</h2>
+                <p>拖入群聊后会自动开启监听</p>
+              </div>
+            </div>
+            <p id="catalog-message" class="catalog-message" role="status"></p>
+            <div id="group-board" class="group-board"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <dialog id="create-dialog" class="create-dialog">
+      <form id="create-form">
+        <div class="dialog-heading">
+          <h2 id="create-title"></h2>
+          <p id="create-description"></p>
+        </div>
+        <label class="field"
+          ><span>名称</span
+          ><input
+            id="create-name"
+            type="text"
+            maxlength="120"
+            required
+            autocomplete="off"
+        /></label>
+        <p id="create-error" class="dialog-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="create-cancel" class="secondary-button" type="button">
+            取消</button
+          ><button id="create-submit" class="primary-button" type="submit">
+            创建
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="move-dialog" class="create-dialog">
+      <div class="dialog-heading">
+        <h2>移动群聊</h2>
+        <p id="move-description"></p>
+      </div>
+      <div id="move-options" class="move-options"></div>
+      <div class="dialog-actions">
+        <button id="move-cancel" class="secondary-button" type="button">
+          取消
+        </button>
+      </div>
+    </dialog>
+  </body>
+</html>

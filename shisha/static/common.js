@@ -51,3 +51,60 @@ async function refreshStatus() {
     });
   }
 }
+
+function initNavigation() {
+  const sidebar = document.querySelector("[data-navigation]");
+  if (!sidebar) return;
+  sidebar.innerHTML = `<a class="brand" href="/" aria-label="Shisha 首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M22.8 9.2c-1.8-1.3-4.1-1.9-6.3-1.4-2.2.4-3.7 1.8-3.7 3.6 0 4.7 10.2 2.6 10.2 8 0 2.2-2 3.9-4.8 4.2-2.5.3-5-.5-6.8-2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M12 28h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".55"/></svg></span><span class="brand-name">Shisha</span></a><div class="side-label">菜单</div><nav class="navigation primary-nav" aria-label="页面导航"><a href="/"><span class="nav-icon">01</span>设置</a><a href="/groups"><span class="nav-icon">02</span>分组</a><a href="/rules"><span class="nav-icon">03</span>规则</a><a href="/messages"><span class="nav-icon">04</span>消息</a></nav><div class="side-footer"><span class="status-dot" data-status-dot></span><div><strong data-status>等待配置</strong><span data-status-detail>完成设置后开始监听</span></div></div>`;
+  for (const link of sidebar.querySelectorAll(".primary-nav a")) {
+    if (new URL(link.href).pathname === window.location.pathname) {
+      link.classList.add("active");
+      link.setAttribute("aria-current", "page");
+    }
+  }
+}
+
+function createPageSaver(onSaved = () => {}) {
+  const label = document.querySelector("[data-save-state]");
+  const saver = new AutoSave((status, message) => {
+    label.classList.toggle("error", status === "error");
+    label.textContent =
+      status === "saving"
+        ? "正在保存…"
+        : status === "error"
+          ? `未保存：${message}`
+          : "已自动保存";
+  }, onSaved);
+  window.addEventListener("pagehide", () => saver.flush());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) saver.flush();
+  });
+  document.addEventListener("click", async (event) => {
+    const link = event.target.closest("a[href]");
+    if (
+      !link ||
+      link.origin !== window.location.origin ||
+      link.pathname === window.location.pathname
+    )
+      return;
+    if (!saver.pending.size && !saver.running && !saver.failures.size) return;
+    event.preventDefault();
+    if (await saver.settle()) window.location.href = link.href;
+  });
+  return saver;
+}
+
+async function getSnowGroups(config) {
+  const connection = config.snowluma;
+  const mode = connection.mode;
+  const response = await fetch("/api/groups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, url: connection[`${mode}_url`], token: "" }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "无法读取群列表");
+  return data.groups;
+}
+
+initNavigation();

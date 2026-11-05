@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Shisha - 规则</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/common.js" defer></script>
+    <script src="/static/autosave.js" defer></script>
+    <script src="/static/rules.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" data-navigation></aside>
+      <main class="main">
+        <div class="page-header">
+          <div>
+            <p class="eyebrow">SHISHA / RULES</p>
+            <h1>监听规则</h1>
+            <p class="intro">设置摘要触发方式和通知群聊。</p>
+          </div>
+          <span class="save-state" data-save-state role="status"
+            >设置自动保存</span
+          >
+        </div>
+        <div class="mobile-status">
+          <span class="status-dot" data-status-dot></span
+          ><strong data-status>等待配置</strong
+          ><span data-status-detail>完成设置后开始监听</span>
+        </div>
+        <section class="settings-section">
+          <div class="section-heading">
+            <div>
+              <span class="section-number">01</span>
+              <h2>触发条件</h2>
+            </div>
+          </div>
+          <label class="field"
+            ><span>关键词</span
+            ><span class="keyword-editor"
+              ><span id="keyword-list" class="keyword-list"></span
+              ><span class="keyword-entry"
+                ><input
+                  id="keyword-input"
+                  type="text"
+                  placeholder="输入关键词后按回车"
+                  autocomplete="off" /></span></span
+            ><small>关键词或 @全体成员 触发摘要。</small></label
+          >
+          <label class="field rule-delay"
+            ><span>合并等待时间</span
+            ><span class="with-unit"
+              ><input
+                id="debounce-seconds"
+                type="number"
+                min="1"
+                max="300"
+                step="1"
+              /><span>秒</span></span
+            ><small>同一发送者的相邻消息会合并处理。</small></label
+          >
+        </section>
+        <section class="settings-section">
+          <div class="section-heading">
+            <div>
+              <span class="section-number">02</span>
+              <h2>群通知</h2>
+            </div>
+          </div>
+          <label class="setting-toggle"
+            ><span>发送摘要到群聊</span
+            ><span class="switch"
+              ><input id="notify-enabled" type="checkbox" /><span
+                class="switch-track"
+              ></span></span
+          ></label>
+          <label class="field"
+            ><span>通知群聊</span
+            ><select id="notification-group">
+              <option value="">选择通知群聊</option>
+            </select></label
+          >
+          <div class="rule-group-actions">
+            <p id="group-message" class="catalog-message" role="status"></p>
+            <button class="quiet-button" id="refresh-groups" type="button">
+              刷新群列表
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
