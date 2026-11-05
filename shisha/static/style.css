@@ -45,52 +45,62 @@ a {
 }
 .brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 76px;
-  width: max-content;
+  gap: 8px;
+  margin-bottom: 38px;
+  width: 100%;
 }
 .brand-mark {
-  width: 37px;
-  height: 37px;
+  width: 112px;
+  height: 112px;
+  flex: none;
   display: grid;
   place-items: center;
-  border-radius: 12px;
-  background: #aa7350;
-  color: #fff7ed;
+  border-radius: 22px;
+  overflow: hidden;
 }
-.brand-mark svg {
-  width: 34px;
-  height: 34px;
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .brand-name {
   font-family: Georgia, serif;
   font-weight: 600;
   letter-spacing: -0.045em;
   font-size: 23px;
+  line-height: 1.1;
 }
-.side-label,
 .eyebrow {
   font-size: 10px;
   letter-spacing: 0.14em;
   color: #9a8e7e;
   font-weight: 700;
 }
-.side-label {
-  margin: 0 0 13px 12px;
-}
 .navigation {
   display: grid;
   gap: 5px;
 }
 .navigation a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   border-radius: 9px;
   padding: 11px 12px;
   font-size: 13px;
+  line-height: 1.35;
   color: #777064;
   transition:
     background 0.18s,
     color 0.18s;
+}
+.nav-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: #9a8d7d;
 }
 .navigation a:first-child {
   background: #ded8ca;
@@ -102,27 +112,59 @@ a {
   color: #342e27;
 }
 .side-footer {
-  border-top: 1px solid #dad4c6;
   margin-top: auto;
-  padding: 19px 3px 0;
+  padding-top: 20px;
+}
+.status-card {
+  padding: 14px;
+  border: 1px solid #ded7ca;
+  border-radius: 11px;
+  background: #f5f1e9;
+}
+.status-card-heading {
   display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-.side-footer strong,
-.side-footer span:not(.status-dot) {
-  display: block;
-}
-.side-footer strong,
-.mobile-status strong {
-  font-size: 12px;
-  font-weight: 600;
-}
-.side-footer span:not(.status-dot) {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8c8173;
   font-size: 11px;
+}
+.status-card-connection {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #62594e;
+}
+.status-card-connection strong {
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status-card-connection .status-dot {
+  margin-top: 0;
+}
+.status-card-metrics {
+  display: grid;
+  gap: 10px;
+  margin: 13px 0 0;
+  padding-top: 13px;
+  border-top: 1px solid #e7e0d4;
+}
+.status-card-metrics > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.status-card-metrics dt {
   color: #9a9082;
-  margin-top: 4px;
-  line-height: 1.5;
+  font-size: 11px;
+}
+.status-card-metrics dd {
+  margin: 0;
+  color: #62594e;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .status-dot {
   display: inline-block;
@@ -439,15 +481,18 @@ textarea:focus {
   }
   .brand {
     margin: 0;
+    width: auto;
+    gap: 3px;
   }
   .brand-name {
-    font-size: 21px;
+    font-size: 12px;
+    line-height: 1;
   }
   .brand-mark {
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
   }
-  .side-label,
   .side-footer {
     display: none;
   }
@@ -458,6 +503,11 @@ textarea:focus {
   .navigation a {
     padding: 8px;
     font-size: 11px;
+    gap: 5px;
+  }
+  .nav-icon {
+    width: 18px;
+    height: 18px;
   }
   .navigation a:first-child {
     background: transparent;
@@ -488,18 +538,16 @@ textarea:focus {
     text-align: left;
   }
   .mobile-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0 0 18px 3px;
-    color: #736b60;
+    display: block;
+    margin: 0 0 18px;
   }
-  .mobile-status .status-dot {
-    margin: 0;
+  .mobile-status .status-card-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .mobile-status span:last-child {
-    font-size: 11px;
-    color: #a09689;
+  .mobile-status .status-card-metrics > div {
+    display: grid;
+    justify-content: start;
+    gap: 4px;
   }
   .toast {
     right: 18px;
@@ -547,6 +595,9 @@ select {
   background: #ded8ca;
   color: #3b342c;
   font-weight: 600;
+}
+.navigation a.active .nav-icon {
+  color: #976f51;
 }
 .sr-only {
   position: absolute;
@@ -1652,8 +1703,9 @@ select:disabled {
     padding-right: 14px;
   }
   .primary-nav a {
-    padding: 8px 7px;
+    padding: 8px 5px;
     font-size: 11px;
+    gap: 4px;
   }
   .groups-toolbar {
     flex-wrap: wrap;

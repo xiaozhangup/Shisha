@@ -4,15 +4,20 @@ import html
 import logging
 import re
 import time
+from dataclasses import replace
+from typing import TYPE_CHECKING
 
 import aiohttp
 
-from .models import GroupMessage
+from .models import GroupMessage, MessageImage
 from .qq_faces import FACE_NAMES
 from .transport import TransportError as SnowLumaError
 from .transport import WebSocketTransport, authorization
 
 log = logging.getLogger("shisha")
+
+if TYPE_CHECKING:
+    from .media import PreparedImage
 
 
 def parse_cq(message: str) -> list[dict]:
@@ -73,7 +78,7 @@ class SnowLumaClient:
         return payload.get("data")
 
     async def parse_message(self, event: dict) -> GroupMessage:
-        text, at_all = await self._render(event.get("message", ""), set(), 0)
+        text, at_all, images = await self._render(event.get("message", ""), set(), 0)
         return GroupMessage(
             group_id=int(event["group_id"]),
             user_id=int(event["user_id"]),
@@ -88,45 +93,61 @@ class SnowLumaClient:
                 or event["user_id"]
             ),
             event_time=int(event.get("time") or time.time()),
+            images=tuple(images),
         )
 
     async def _render(
         self, value: str | list, seen: set[str], depth: int
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, list[MessageImage]]:
         segments = parse_cq(value) if isinstance(value, str) else value
-        parts, at_all = [], False
+        parts, images, at_all = [], [], False
+        length = 0
+
+        def append(text: str) -> None:
+            nonlocal length
+            parts.append(text)
+            length += len(text)
+
         for segment in segments:
             kind, data = segment.get("type"), segment.get("data", {})
             if kind == "text":
-                parts.append(str(data.get("text", "")))
+                append(str(data.get("text", "")))
             elif kind == "at":
                 target = str(data.get("qq", ""))
                 if target == "all":
                     at_all = True
-                parts.append(target)
+                append(target)
             elif kind == "file":
-                parts.append(f"<文件>{data.get('name') or data.get('file', '')}</文件>")
+                append(f"<文件>{data.get('name') or data.get('file', '')}</文件>")
             elif kind == "image":
-                url = data.get("url") or ""
-                if not url and data.get("file"):
+                file = str(data.get("file") or "")
+                url = str(data.get("url") or "")
+                if not url and file.startswith(
+                    ("http://", "https://", "base64://", "data:image/")
+                ):
+                    url = file
+                if not url and file:
                     try:
-                        info = await self.action("get_image", {"file": data["file"]})
-                        url = info.get("url") or ""
+                        info = await self.action("get_image", {"file": file})
+                        url = str(info.get("url") or info.get("file") or "")
                     except (TimeoutError, aiohttp.ClientError, SnowLumaError) as exc:
                         log.warning("读取图片地址失败: %s", type(exc).__name__)
-                parts.append(str(url))
+                display = url if url.startswith(("http://", "https://")) else "[图片]"
+                start = length
+                append(display)
+                images.append(MessageImage(file, url, start, length))
             elif kind == "face":
-                parts.append(FACE_NAMES.get(str(data.get("id", "")), "[表情]"))
+                append(FACE_NAMES.get(str(data.get("id", "")), "[表情]"))
             elif kind == "record":
-                parts.append("[语音消息]")
+                append("[语音消息]")
             elif kind == "video":
-                parts.append("[视频]")
+                append("[视频]")
             elif kind == "json":
-                parts.append("<小程序></小程序>")
+                append("<小程序></小程序>")
             elif kind == "xml":
-                parts.append(f"<服务>{data.get('resid', data.get('id', ''))}</服务>")
+                append(f"<服务>{data.get('resid', data.get('id', ''))}</服务>")
             elif kind == "markdown":
-                parts.append(str(data.get("content", "")))
+                append(str(data.get("content", "")))
             elif kind == "forward" and depth < 5:
                 forward_id = str(data.get("id") or "")
                 if not forward_id or forward_id in seen:
@@ -134,25 +155,58 @@ class SnowLumaClient:
                 seen.add(forward_id)
                 try:
                     result = await self.action("get_forward_msg", {"id": forward_id})
-                    nodes = []
-                    for item in result["messages"]:
-                        text, _ = await self._render(
+                    for index, item in enumerate(result["messages"]):
+                        if index:
+                            append("\n")
+                        text, _, child_images = await self._render(
                             item.get("message", ""), seen, depth + 1
                         )
-                        nodes.append(text)
-                    parts.append("\n".join(nodes))
+                        images.extend(
+                            replace(
+                                image,
+                                start=image.start + length,
+                                end=image.end + length,
+                            )
+                            for image in child_images
+                        )
+                        append(text)
                 except (TimeoutError, aiohttp.ClientError, SnowLumaError) as exc:
                     log.warning("读取合并转发失败: %s", type(exc).__name__)
-                    parts.append("[合并转发读取失败]")
+                    append("[合并转发读取失败]")
                 finally:
                     seen.remove(forward_id)
-        return "".join(parts), at_all
+        return "".join(parts), at_all, images
 
-    async def send(self, group_id: int, text: str, reply_to: int | None = None) -> None:
+    async def send(
+        self,
+        group_id: int,
+        text: str,
+        reply_to: int | None = None,
+        images: list[PreparedImage] | None = None,
+    ) -> None:
         segments = []
         if reply_to is not None:
             segments.append({"type": "reply", "data": {"id": str(reply_to)}})
-        segments.append({"type": "text", "data": {"text": text}})
+        if images:
+            by_marker = {image.marker: image for image in images}
+            pattern = re.compile("|".join(re.escape(marker) for marker in by_marker))
+            offset = 0
+            for match in pattern.finditer(text):
+                if match.start() > offset:
+                    segments.append(
+                        {"type": "text", "data": {"text": text[offset : match.start()]}}
+                    )
+                segments.append(
+                    {
+                        "type": "image",
+                        "data": {"file": by_marker[match.group()].onebot_file()},
+                    }
+                )
+                offset = match.end()
+            if offset < len(text):
+                segments.append({"type": "text", "data": {"text": text[offset:]}})
+        else:
+            segments.append({"type": "text", "data": {"text": text}})
         await self.action("send_group_msg", {"group_id": group_id, "message": segments})
 
     async def mark(self, message: GroupMessage) -> None:

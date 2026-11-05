@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import aiohttp
 from aiohttp import web
 
 from .config import ConfigStore
+from .media import ImageError
 from .snowluma import SnowLumaError
 from .todoist import TodoistClient
 from .worker import Worker
@@ -164,6 +166,31 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
         except ValueError:
             return web.json_response({"error": "记录查询参数无效"}, status=400)
 
+    async def message_image(request: web.Request) -> web.StreamResponse:
+        group = request.match_info["group_id"]
+        if group not in config.value["filter"]["groups"]:
+            raise web.HTTPNotFound()
+        try:
+            group_id = int(group)
+            message_id = int(request.match_info["message_id"])
+            position = int(request.match_info["position"])
+            if (
+                not 0 < group_id < 2**63
+                or not -(2**63) <= message_id < 2**63
+                or not 0 <= position < 2**63
+            ):
+                raise ValueError
+            if not worker.history.get_image(group_id, message_id, position):
+                raise web.HTTPNotFound()
+            path, media_type = await asyncio.shield(
+                worker.images.start(group_id, message_id, position)
+            )
+            return web.FileResponse(path, headers={"Content-Type": media_type})
+        except ValueError:
+            raise web.HTTPNotFound()
+        except ImageError:
+            raise web.HTTPBadGateway(text="图片读取失败")
+
     async def todoist_catalog(request: web.Request) -> web.Response:
         if not config.value["todoist"]["token"]:
             return web.json_response({"error": "请先填写 Todoist 令牌"}, status=400)
@@ -236,6 +263,9 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
     app.router.add_get("/api/messages", history)
     app.router.add_get("/api/conversations", conversations)
     app.router.add_get("/api/conversations/{group_id}", conversation)
+    app.router.add_get(
+        "/api/message-images/{group_id}/{message_id}/{position}", message_image
+    )
     app.router.add_get("/api/todoist/catalog", todoist_catalog)
     app.router.add_post("/api/todoist/{kind}", todoist_create)
     app.router.add_static("/static/", STATIC)

@@ -1,4 +1,12 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True, slots=True)
+class MessageImage:
+    file: str
+    url: str
+    start: int
+    end: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,6 +20,7 @@ class GroupMessage:
     group_name: str = ""
     sender_name: str = ""
     event_time: int = 0
+    images: tuple[MessageImage, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,3 +30,4 @@ class Task:
     attachments: list[str]
     related_time: str
     earliest_time: str
+    image_titles: dict[str, str] = field(default_factory=dict)

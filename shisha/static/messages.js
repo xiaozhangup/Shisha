@@ -34,6 +34,42 @@ function dateText(timestamp) {
   }).format(new Date(timestamp * 1000));
 }
 
+function appendMessageImage(container, url) {
+  const link = element("a", "message-image-link");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.setAttribute("aria-label", "查看图片");
+  const image = document.createElement("img");
+  image.className = "message-image";
+  image.src = url;
+  image.alt = "图片";
+  image.loading = "lazy";
+  image.addEventListener("error", () =>
+    link.replaceWith(element("span", "message-image-error", "[图片加载失败]")),
+  );
+  link.append(image);
+  container.append(link);
+}
+
+function appendSummaryText(container, text, images) {
+  let offset = 0;
+  while (offset < text.length) {
+    let next = null;
+    for (const image of images) {
+      const index = text.indexOf(image.marker, offset);
+      if (index >= 0 && (!next || index < next.index))
+        next = { ...image, index };
+    }
+    if (!next) break;
+    if (next.index > offset)
+      container.append(document.createTextNode(text.slice(offset, next.index)));
+    appendMessageImage(container, next.url);
+    offset = next.index + next.marker.length;
+  }
+  container.append(document.createTextNode(text.slice(offset)));
+}
+
 function groupName(group) {
   return conversation.names.get(group.id) || group.name || `群 ${group.id}`;
 }
@@ -112,10 +148,16 @@ function messageRow(item, submitted = false) {
     element("time", "chat-time", dateText(item.event_time)),
   );
   if (submitted) meta.append(element("span", "chat-submitted", "已提交"));
-  content.append(
-    meta,
-    element("div", "chat-bubble", item.text || "[非文字消息]"),
-  );
+  const bubble = element("div", "chat-bubble");
+  if (item.parts) {
+    for (const part of item.parts) {
+      if (part.type === "image") appendMessageImage(bubble, part.url);
+      else bubble.append(document.createTextNode(part.text));
+    }
+  } else {
+    bubble.textContent = item.text || "[非文字消息]";
+  }
+  content.append(meta, bubble);
   row.append(avatar, content);
   return row;
 }
@@ -139,6 +181,14 @@ function summaryCard(request) {
     element("time", "summary-time", dateText(request.created_at)),
   );
   if (request.status === "complete" && request.result) {
+    const body = element("div", "summary-body");
+    appendSummaryText(body, request.result, request.images || []);
+    card.append(body);
+  } else if (
+    request.status === "failed" &&
+    (request.result?.startsWith("图片读取失败：") ||
+      request.result?.startsWith("AI "))
+  ) {
     card.append(element("div", "summary-body", request.result));
   }
   return card;

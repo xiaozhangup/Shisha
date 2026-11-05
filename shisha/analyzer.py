@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 
 import aiohttp
 
+from .media import PreparedImage
 from .models import Task
 
 PROMPT = """我将向你发送一条或多条合并后的QQ消息，该消息通常为学校发布的通知类内容。请你严格按照以下要求执行任务：
@@ -61,6 +63,17 @@ PROMPT = """我将向你发送一条或多条合并后的QQ消息，该消息通
 }
 不要输出 JSON 以外的文字。"""
 
+IMAGE_PROMPT = """
+
+输入中的图片使用【图片1】、【图片2】等标记，并在消息末尾附有对应的图像。请结合图片中清晰可辨的文字和消息内容提取任务。
+如果提取到了任务，将每张相关图片的原标记按其所属任务放入 attachments，格式为“图片: 【图片1】”；保留每一张提供的图片，不要编造标记或输出图片链接。
+"""
+
+IMAGE_TITLES_PROMPT = """
+每个任务额外提供 image_titles 对象：以该任务附件中的图片标记为键，根据图片内容写一个简短标题作为值，例如 {"【图片1】":"报名表填写示例"}；没有图片时使用空对象。
+标题只描述图片中可见的内容，无法辨认时使用“图片”，不要猜测。
+"""
+
 
 class AnalysisError(RuntimeError):
     pass
@@ -71,16 +84,35 @@ class Analyzer:
         self.session = session
         self.config = config
 
-    async def extract(self, text: str) -> list[Task]:
+    async def extract(
+        self,
+        text: str,
+        images: list[PreparedImage] | None = None,
+        with_image_titles: bool = False,
+    ) -> list[Task]:
         headers = {"Authorization": f"Bearer {self.config['api_key']}"}
+        user_content: str | list[dict] = text
+        if images:
+            user_content = [{"type": "text", "text": text}]
+            for image in images:
+                user_content.extend(
+                    [
+                        {"type": "text", "text": image.marker},
+                        {"type": "image_url", "image_url": {"url": image.model_url()}},
+                    ]
+                )
         body = {
             "model": self.config["model"],
             "messages": [
                 {
                     "role": "system",
-                    "content": PROMPT.replace("{today}", date.today().isoformat()),
+                    "content": (
+                        PROMPT
+                        + (IMAGE_PROMPT if images else "")
+                        + (IMAGE_TITLES_PROMPT if with_image_titles else "")
+                    ).replace("{today}", date.today().isoformat()),
                 },
-                {"role": "user", "content": text},
+                {"role": "user", "content": user_content},
             ],
         }
         url = f"{self.config['base_url'].rstrip('/')}/chat/completions"
@@ -106,6 +138,9 @@ class Analyzer:
                 tasks = []
                 for item in items:
                     attachments = item["attachments"]
+                    image_titles = (
+                        item.get("image_titles", {}) if with_image_titles else {}
+                    )
                     values = [
                         item["task_title"],
                         item["task_subject"],
@@ -116,8 +151,22 @@ class Analyzer:
                         any(not isinstance(value, str) for value in values)
                         or not isinstance(attachments, list)
                         or any(not isinstance(value, str) for value in attachments)
+                        or not isinstance(image_titles, dict)
+                        or any(
+                            not isinstance(marker, str)
+                            or not isinstance(title, str)
+                            or not title.strip()
+                            or len(title.strip()) > 40
+                            for marker, title in image_titles.items()
+                        )
                     ):
                         raise ValueError("任务字段格式不正确")
+                    if with_image_titles:
+                        markers = set(
+                            re.findall(r"【图片\d+】", "\n".join(attachments))
+                        )
+                        if markers != set(image_titles):
+                            raise ValueError("图片标题与附件不匹配")
                     if values[0].strip():
                         tasks.append(
                             Task(
@@ -126,8 +175,20 @@ class Analyzer:
                                 attachments,
                                 values[2],
                                 values[3],
+                                {
+                                    marker: title.strip()
+                                    for marker, title in image_titles.items()
+                                },
                             )
                         )
+                if images and tasks:
+                    attachments = "\n".join(
+                        item for task in tasks for item in task.attachments
+                    )
+                    expected = {image.marker for image in images}
+                    actual = set(re.findall(r"【图片\d+】", attachments))
+                    if actual != expected:
+                        raise ValueError("摘要缺少图片或图片标记无效")
                 return tasks
             except (
                 KeyError,

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
 from collections import OrderedDict, deque
 from copy import deepcopy
+from dataclasses import replace
 
 import aiohttp
+import psutil
 
-from .analyzer import Analyzer
+from .analyzer import AnalysisError, Analyzer
 from .config import ConfigStore, notification_target, todoist_group
+from .media import MAX_MODEL_TOTAL, ImageError, ImageStore, PreparedImage
 from .models import GroupMessage, Task
 from .snowluma import SnowLumaClient
 from .storage import History
@@ -30,6 +34,8 @@ class Worker:
         self, session: aiohttp.ClientSession, config: ConfigStore, history: History
     ):
         self.session, self.config, self.history = session, config, history
+        self.images = ImageStore(session, history, self._refresh_image_url)
+        self.process = psutil.Process()
         self.connection: asyncio.Task | None = None
         self.apply_lock = asyncio.Lock()
         self.connection_config: dict | None = None
@@ -39,7 +45,7 @@ class Worker:
         self.jobs: set[asyncio.Task] = set()
         self.buffers: dict[tuple[int, int], deque[GroupMessage]] = {}
         self.recent: dict[int, OrderedDict[int, GroupMessage]] = {}
-        self.inflight: list[str] = []
+        self.inflight: list[tuple[str, str]] = []
         self.connected = False
         self.last_error = ""
 
@@ -69,6 +75,9 @@ class Worker:
             "configured": self.config.ready(),
             "connected": self.connected,
             "listening": bool(self.config.value["filter"]["groups"]),
+            "group_count": len(self.config.value["filter"]["groups"]),
+            "message_count": self.history.message_count(),
+            "memory_bytes": self.process.memory_info().rss,
             "error": self.last_error,
             "mode": self.config.value["snowluma"]["mode"],
         }
@@ -78,6 +87,12 @@ class Worker:
         if transport and connection_key(config) != connection_key(transport.config):
             transport = None
         return SnowLumaClient(self.session, config, transport)
+
+    async def _refresh_image_url(self, file: str) -> str:
+        info = await self.client(self.config.value["snowluma"]).action(
+            "get_image", {"file": file}
+        )
+        return str(info.get("url") or info.get("file") or "")
 
     async def _listen(self, connection: dict) -> None:
         while True:
@@ -163,6 +178,8 @@ class Worker:
             msg = await self.client(connection).parse_message(event)
             if not self.history.save_message(msg):
                 return
+            for position in range(len(msg.images)):
+                self.images.start(msg.group_id, msg.message_id, position)
             if msg.text.lstrip().startswith("/"):
                 return
             group = self.recent.setdefault(msg.group_id, OrderedDict())
@@ -264,11 +281,18 @@ class Worker:
         if message is None:
             message = await client.get_message(message_id)
         if message.group_id == group_id and message.text.strip():
-            self.history.save_message(message)
+            self.history.save_message(message, include_existing_images=True)
+            for position in range(len(message.images)):
+                self.images.start(message.group_id, message.message_id, position)
             await self._process(message, message.text, [message], config, manual=True)
 
     async def _notify(
-        self, client: SnowLumaClient, config: dict, message: GroupMessage, text: str
+        self,
+        client: SnowLumaClient,
+        config: dict,
+        message: GroupMessage,
+        text: str,
+        images: list[PreparedImage] | None = None,
     ) -> None:
         if not config["filter"]["notify_enabled"]:
             return
@@ -277,12 +301,16 @@ class Worker:
         sender = client if own_sender else self.client(config["notification"])
         if message.group_id == target:
             await sender.send(
-                target, text, reply_to=message.message_id if own_sender else None
+                target,
+                text,
+                reply_to=message.message_id if own_sender else None,
+                images=images,
             )
         else:
             await sender.send(
                 target,
-                f"{text}\n\n来自: {message.group_name or message.group_id} ({message.group_id})\n原文:\n{message.text[:69]}",
+                f"{text}\n\n来自: {message.group_name or message.group_id} ({message.group_id})\n原文:\n{message_preview(message)[:69]}",
+                images=images,
             )
 
     async def _process(
@@ -301,31 +329,71 @@ class Worker:
                 await client.mark(message)
             except (TimeoutError, aiohttp.ClientError, RuntimeError) as exc:
                 log.warning("无法添加表情回应: %s", exc)
-        if not manual and self.history.similarity(text, self.inflight) > 0.8:
+        context, image_refs = image_context(messages)
+        try:
+            images = await asyncio.gather(
+                *(self.images.prepare(*image) for image in image_refs)
+            )
+            if sum(len(image.model_data) for image in images) > MAX_MODEL_TOTAL:
+                raise ImageError("一次摘要的图片合计超过 32 MiB")
+        except ImageError as exc:
+            request_id = self.history.start_ai(message, context, messages, image_refs)
+            self.history.finish_ai(request_id, "failed", f"图片读取失败：{exc}")
+            log.warning("AI 提取失败: %s", exc)
+            await self._notify(client, config, message, f"摘要提取失败：{exc}")
+            return
+
+        image_hash = ""
+        if images:
+            digest = hashlib.sha256()
+            for image in images:
+                digest.update(hashlib.sha256(image.original).digest())
+            image_hash = digest.hexdigest()
+        pending = [content for content, value in self.inflight if value == image_hash]
+        if not manual and self.history.similarity(context, pending, image_hash) > 0.8:
             await self._notify(client, config, message, "与历史消息高度相似，已忽略")
             return
-        self.inflight.append(text)
+        self.inflight.append((context, image_hash))
         try:
-            request_id = self.history.start_ai(message, text, messages)
+            request_id = self.history.start_ai(message, context, messages, image_refs)
             try:
-                tasks = await Analyzer(self.session, config["ai"]).extract(text)
+                tasks = await Analyzer(self.session, config["ai"]).extract(
+                    context,
+                    images,
+                    with_image_titles=bool(images)
+                    and todoist_group(config["todoist"], message.group_id)[
+                        "todoist_enabled"
+                    ],
+                )
             except (TimeoutError, aiohttp.ClientError, RuntimeError) as exc:
-                self.history.finish_ai(request_id, "failed", type(exc).__name__)
+                detail = ""
+                if images and isinstance(exc, aiohttp.ClientResponseError):
+                    detail = f"AI 接口返回 HTTP {exc.status}，请检查模型的图片输入设置"
+                elif images and isinstance(exc, AnalysisError):
+                    detail = "AI 返回的任务格式或图片信息不正确"
+                self.history.finish_ai(
+                    request_id, "failed", detail or type(exc).__name__
+                )
                 log.warning("AI 提取失败: %s", exc)
                 await self._notify(
-                    client, config, message, "摘要提取失败，请检查 AI 配置和日志"
+                    client,
+                    config,
+                    message,
+                    f"摘要提取失败：{detail}"
+                    if detail
+                    else "摘要提取失败，请检查 AI 配置和日志",
                 )
                 return
             except asyncio.CancelledError:
                 self.history.finish_ai(request_id, "interrupted")
                 raise
-            self.history.remember(text)
+            self.history.remember(context, image_hash)
             result = "\n\n".join(
                 format_summary(task, message.message_id, None) for task in tasks
             )
             self.history.finish_ai(request_id, "complete" if tasks else "empty", result)
         finally:
-            self.inflight.remove(text)
+            self.inflight.remove((context, image_hash))
         if not tasks:
             notice = (
                 "该消息未包含任务信息，未创建任务"
@@ -334,6 +402,11 @@ class Worker:
             )
             await self._notify(client, config, message, notice)
             return
+        image_titles = {
+            marker: title
+            for task in tasks
+            for marker, title in task.image_titles.items()
+        }
         todoist = (
             TodoistClient(self.session, config["todoist"])
             if todoist_group(config["todoist"], message.group_id)["todoist_enabled"]
@@ -343,14 +416,18 @@ class Worker:
             success = None
             if todoist:
                 try:
-                    await todoist.create(task, message, text)
+                    await todoist.create(
+                        task_with_image_titles(task, image_titles),
+                        message,
+                        replace_image_markers(context, image_titles, in_context=True),
+                    )
                     success = True
                 except (TimeoutError, aiohttp.ClientError, RuntimeError) as exc:
                     success = False
                     log.warning("Todoist 创建失败: %s", exc)
             summary = format_summary(task, message.message_id, success)
             self.history.save_summary(message.message_id, summary)
-            await self._notify(client, config, message, summary)
+            await self._notify(client, config, message, summary, images)
             log.info("已处理任务：%s", task.title)
 
     async def close(self) -> None:
@@ -360,6 +437,56 @@ class Worker:
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
+        await self.images.close()
+
+
+def image_context(
+    messages: list[GroupMessage],
+) -> tuple[str, list[tuple[str, int, int, int]]]:
+    entries, refs = [], []
+    for message in messages:
+        parts, offset = [], 0
+        for position, image in enumerate(message.images):
+            marker = f"【图片{len(refs) + 1}】"
+            parts.extend((message.text[offset : image.start], marker))
+            refs.append((marker, message.group_id, message.message_id, position))
+            offset = image.end
+        parts.append(message.text[offset:])
+        entries.append("".join(parts))
+    return "\n".join(entries), refs
+
+
+def message_preview(message: GroupMessage) -> str:
+    parts, offset = [], 0
+    for image in message.images:
+        parts.extend((message.text[offset : image.start], "[图片]"))
+        offset = image.end
+    parts.append(message.text[offset:])
+    return "".join(parts)
+
+
+def replace_image_markers(
+    value: str, titles: dict[str, str], in_context: bool = False
+) -> str:
+    for marker, title in titles.items():
+        value = value.replace(marker, f"[图片：{title}]" if in_context else title)
+    return value
+
+
+def task_with_image_titles(task: Task, titles: dict[str, str]) -> Task:
+    titles = {**titles, **task.image_titles}
+
+    def convert(value: str) -> str:
+        return replace_image_markers(value, titles)
+
+    return replace(
+        task,
+        title=convert(task.title),
+        subject=convert(task.subject),
+        attachments=[convert(item) for item in task.attachments],
+        related_time=convert(task.related_time),
+        earliest_time=convert(task.earliest_time),
+    )
 
 
 def format_summary(task: Task, message_id: int, success: bool | None) -> str:

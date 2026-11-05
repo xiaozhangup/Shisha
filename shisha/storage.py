@@ -20,6 +20,7 @@ def tokens(text: str) -> set[str]:
 class History:
     def __init__(self, directory: Path):
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.directory = directory
         path = directory / "history.sqlite3"
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
@@ -27,6 +28,12 @@ class History:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS processed (id INTEGER PRIMARY KEY, text TEXT NOT NULL)"
         )
+        if "image_hash" not in {
+            row["name"] for row in self.db.execute("PRAGMA table_info(processed)")
+        }:
+            self.db.execute(
+                "ALTER TABLE processed ADD COLUMN image_hash TEXT NOT NULL DEFAULT ''"
+            )
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS summaries (id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
         )
@@ -47,19 +54,31 @@ class History:
                 group_id INTEGER NOT NULL, message_id INTEGER NOT NULL,
                 PRIMARY KEY(request_id, group_id, message_id)
             );
+            CREATE TABLE IF NOT EXISTS message_images (
+                group_id INTEGER NOT NULL, message_id INTEGER NOT NULL, position INTEGER NOT NULL,
+                start INTEGER NOT NULL, end INTEGER NOT NULL, file TEXT NOT NULL, url TEXT NOT NULL,
+                cached_name TEXT NOT NULL DEFAULT '', media_type TEXT NOT NULL DEFAULT '',
+                error TEXT NOT NULL DEFAULT '', PRIMARY KEY(group_id, message_id, position)
+            );
+            CREATE TABLE IF NOT EXISTS ai_request_images (
+                request_id INTEGER NOT NULL REFERENCES ai_requests(id), marker TEXT NOT NULL,
+                group_id INTEGER NOT NULL, message_id INTEGER NOT NULL, position INTEGER NOT NULL,
+                PRIMARY KEY(request_id, marker)
+            );
             CREATE INDEX IF NOT EXISTS received_group_id ON received_messages(group_id, id);
             CREATE INDEX IF NOT EXISTS ai_group_id ON ai_requests(group_id, id);
             CREATE INDEX IF NOT EXISTS ai_message_lookup ON ai_request_messages(group_id, message_id);
         """)
         self.db.commit()
 
-    def similarity(self, text: str, pending: list[str]) -> float:
+    def similarity(self, text: str, pending: list[str], image_hash: str = "") -> float:
         current = tokens(text)
         best = 0.0
         stored = (
             row[0]
             for row in self.db.execute(
-                "SELECT text FROM processed ORDER BY id DESC LIMIT 12"
+                "SELECT text FROM processed WHERE image_hash = ? ORDER BY id DESC LIMIT 12",
+                (image_hash,),
             )
         )
         for previous in chain(pending, stored):
@@ -71,12 +90,17 @@ class History:
                 best = max(best, len(current & prior) / len(union))
         return best
 
-    def remember(self, text: str) -> None:
-        self.db.execute("INSERT INTO processed (text) VALUES (?)", (text,))
+    def remember(self, text: str, image_hash: str = "") -> None:
+        self.db.execute(
+            "INSERT INTO processed (text, image_hash) VALUES (?, ?)", (text, image_hash)
+        )
         self.db.execute(
             "DELETE FROM processed WHERE id NOT IN (SELECT id FROM processed ORDER BY id DESC LIMIT 12)"
         )
         self.db.commit()
+
+    def message_count(self) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM received_messages").fetchone()[0]
 
     def save_summary(self, message_id: int, text: str) -> None:
         self.db.execute(
@@ -84,7 +108,9 @@ class History:
         )
         self.db.commit()
 
-    def save_message(self, message: GroupMessage) -> bool:
+    def save_message(
+        self, message: GroupMessage, include_existing_images: bool = False
+    ) -> bool:
         cursor = self.db.execute(
             """INSERT OR IGNORE INTO received_messages
                (group_id, group_name, message_id, user_id, sender_name, text, event_time)
@@ -99,11 +125,75 @@ class History:
                 message.event_time,
             ),
         )
+        if cursor.rowcount == 0 and include_existing_images and message.images:
+            existing = self.db.execute(
+                "SELECT 1 FROM message_images WHERE group_id = ? AND message_id = ? LIMIT 1",
+                (message.group_id, message.message_id),
+            ).fetchone()
+            if existing is None:
+                self.db.execute(
+                    "UPDATE received_messages SET text = ? WHERE group_id = ? AND message_id = ?",
+                    (message.text, message.group_id, message.message_id),
+                )
+        if cursor.rowcount == 1 or include_existing_images:
+            self.db.executemany(
+                """INSERT OR IGNORE INTO message_images
+                   (group_id, message_id, position, start, end, file, url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        message.group_id,
+                        message.message_id,
+                        position,
+                        image.start,
+                        image.end,
+                        image.file,
+                        image.url,
+                    )
+                    for position, image in enumerate(message.images)
+                ],
+            )
         self.db.commit()
         return cursor.rowcount == 1
 
+    def get_image(self, group_id: int, message_id: int, position: int) -> dict | None:
+        row = self.db.execute(
+            "SELECT * FROM message_images WHERE group_id = ? AND message_id = ? AND position = ?",
+            (group_id, message_id, position),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_image(
+        self,
+        group_id: int,
+        message_id: int,
+        position: int,
+        cached_name: str,
+        media_type: str,
+        error: str,
+    ) -> None:
+        self.db.execute(
+            """UPDATE message_images SET cached_name = ?, media_type = ?, error = ?
+               WHERE group_id = ? AND message_id = ? AND position = ?""",
+            (cached_name, media_type, error, group_id, message_id, position),
+        )
+        self.db.commit()
+
+    def update_image_url(
+        self, group_id: int, message_id: int, position: int, url: str
+    ) -> None:
+        self.db.execute(
+            "UPDATE message_images SET url = ? WHERE group_id = ? AND message_id = ? AND position = ?",
+            (url, group_id, message_id, position),
+        )
+        self.db.commit()
+
     def start_ai(
-        self, trigger: GroupMessage, text: str, messages: list[GroupMessage]
+        self,
+        trigger: GroupMessage,
+        text: str,
+        messages: list[GroupMessage],
+        images: list[tuple[str, int, int, int]] | None = None,
     ) -> int:
         cursor = self.db.execute(
             """INSERT INTO ai_requests(group_id, group_name, message_id, text, created_at, status)
@@ -120,6 +210,10 @@ class History:
         self.db.executemany(
             "INSERT OR IGNORE INTO ai_request_messages(request_id, group_id, message_id) VALUES (?, ?, ?)",
             [(request_id, item.group_id, item.message_id) for item in messages],
+        )
+        self.db.executemany(
+            "INSERT INTO ai_request_images(request_id, marker, group_id, message_id, position) VALUES (?, ?, ?, ?, ?)",
+            [(request_id, *image) for image in (images or [])],
         )
         self.db.commit()
         return request_id
@@ -233,6 +327,18 @@ class History:
             batch["message_rows"] = [
                 int(value) for value in batch["message_rows"].split(",")
             ]
+            batch["images"] = [
+                {
+                    "marker": image["marker"],
+                    "url": image_url(
+                        image["group_id"], image["message_id"], image["position"]
+                    ),
+                }
+                for image in self.db.execute(
+                    "SELECT * FROM ai_request_images WHERE request_id = ? ORDER BY rowid",
+                    (batch["id"],),
+                )
+            ]
             batches.append(batch)
 
         unanchored = self.db.execute(
@@ -245,12 +351,49 @@ class History:
             (group_id,),
         ).fetchall()
         return {
-            "items": [dict(row) for row in items],
+            "items": [self.conversation_message(row) for row in items],
             "requests": batches,
             "unanchored": [dict(row) for row in unanchored],
             "next_before": next_before,
             "next_after": next_after,
         }
 
+    def conversation_message(self, row: sqlite3.Row) -> dict:
+        message = dict(row)
+        images = self.db.execute(
+            """SELECT * FROM message_images WHERE group_id = ? AND message_id = ?
+               ORDER BY position""",
+            (message["group_id"], message["message_id"]),
+        ).fetchall()
+        if images:
+            parts, offset = [], 0
+            for image in images:
+                if image["start"] > offset:
+                    parts.append(
+                        {
+                            "type": "text",
+                            "text": message["text"][offset : image["start"]],
+                        }
+                    )
+                parts.append(
+                    {
+                        "type": "image",
+                        "url": image_url(
+                            message["group_id"],
+                            message["message_id"],
+                            image["position"],
+                        ),
+                    }
+                )
+                offset = image["end"]
+            if offset < len(message["text"]):
+                parts.append({"type": "text", "text": message["text"][offset:]})
+            message["parts"] = parts
+        return message
+
     def close(self) -> None:
         self.db.close()
+
+
+def image_url(group_id: int, message_id: int, position: int) -> str:
+    return f"/api/message-images/{group_id}/{message_id}/{position}"
