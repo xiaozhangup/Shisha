@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import signal
@@ -13,7 +14,17 @@ from .web import create_app
 from .worker import Worker
 
 
-async def main() -> None:
+def port_number(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("端口必须是 0 到 65535 之间的整数") from exc
+    if not 0 <= port <= 65535:
+        raise argparse.ArgumentTypeError("端口必须是 0 到 65535 之间的整数")
+    return port
+
+
+async def main(port: int = 0) -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
@@ -26,7 +37,7 @@ async def main() -> None:
         worker = Worker(session, config, history)
         runner = web.AppRunner(create_app(config, worker), access_log=None)
         await runner.setup()
-        site = web.TCPSite(runner, "127.0.0.1", 0)
+        site = web.TCPSite(runner, "127.0.0.1", port)
         await site.start()
         port = runner.addresses[0][1]
         logging.getLogger("shisha").info("配置页面：http://127.0.0.1:%s", port)
@@ -47,4 +58,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="启动 Shisha")
+    parser.add_argument(
+        "-p", "--port", type=port_number, default=0, help="配置页面端口，默认为随机端口"
+    )
+    args = parser.parse_args()
+    asyncio.run(main(args.port))

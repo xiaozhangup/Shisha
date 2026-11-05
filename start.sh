@@ -14,4 +14,4 @@ if [ ! -f .venv/.shisha-installed ] || [ pyproject.toml -nt .venv/.shisha-instal
     touch .venv/.shisha-installed
 fi
 
-exec .venv/bin/python -m shisha
+exec .venv/bin/python -m shisha "$@"
