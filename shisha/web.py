@@ -7,6 +7,7 @@ from aiohttp import web
 
 from .config import ConfigStore
 from .snowluma import SnowLumaError
+from .todoist import TodoistClient
 from .worker import Worker
 
 STATIC = Path(__file__).parent / "static"
@@ -46,6 +47,19 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
             if not isinstance(body, dict):
                 raise TypeError("配置格式不正确")
             result = config.save(body)
+        except (ValueError, TypeError) as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        await worker.apply()
+        return web.json_response({"config": result, "status": worker.status()})
+
+    async def patch_config(request: web.Request) -> web.Response:
+        if request.content_type != "application/json":
+            raise web.HTTPUnsupportedMediaType()
+        try:
+            body = await request.json()
+            if not isinstance(body, dict) or not body:
+                raise TypeError("配置格式不正确")
+            result = config.patch(body)
         except (ValueError, TypeError) as exc:
             return web.json_response({"error": str(exc)}, status=400)
         await worker.apply()
@@ -99,13 +113,75 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
         except ValueError:
             return web.json_response({"error": "记录查询参数无效"}, status=400)
 
+    async def todoist_catalog(request: web.Request) -> web.Response:
+        if not config.value["todoist"]["token"]:
+            return web.json_response({"error": "请先填写 Todoist 令牌"}, status=400)
+        try:
+            return web.json_response(
+                await TodoistClient(worker.session, config.value["todoist"]).catalog()
+            )
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            detail = (
+                f"（HTTP {exc.status}）"
+                if isinstance(exc, aiohttp.ClientResponseError)
+                else ""
+            )
+            return web.json_response(
+                {"error": f"无法读取 Todoist 项目和板块{detail}"}, status=502
+            )
+
+    async def todoist_create(request: web.Request) -> web.Response:
+        if request.content_type != "application/json":
+            raise web.HTTPUnsupportedMediaType()
+        if not config.value["todoist"]["token"]:
+            return web.json_response({"error": "请先填写 Todoist 令牌"}, status=400)
+        try:
+            body = await request.json()
+            if (
+                not isinstance(body, dict)
+                or not isinstance(body.get("name"), str)
+                or not body["name"].strip()
+            ):
+                raise ValueError("请输入名称")
+            name = body["name"].strip()
+            client = TodoistClient(worker.session, config.value["todoist"])
+            kind = request.match_info["kind"]
+            if kind == "projects":
+                item = await client.create_project(name)
+                result = {"id": str(item["id"]), "name": item["name"]}
+            elif kind == "sections":
+                project_id = body.get("project_id")
+                if not isinstance(project_id, str) or not project_id.strip():
+                    raise ValueError("请先选择项目")
+                item = await client.create_section(name, project_id.strip())
+                result = {
+                    "id": str(item["id"]),
+                    "name": item["name"],
+                    "project_id": str(item["project_id"]),
+                }
+            else:
+                raise ValueError("创建类型无效")
+            return web.json_response(result)
+        except (ValueError, TypeError) as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        except (TimeoutError, aiohttp.ClientError) as exc:
+            detail = (
+                f"（HTTP {exc.status}）"
+                if isinstance(exc, aiohttp.ClientResponseError)
+                else ""
+            )
+            return web.json_response({"error": f"Todoist 创建失败{detail}"}, status=502)
+
     app = web.Application(middlewares=[local_only], client_max_size=128 * 1024)
     app.router.add_get("/", index)
     app.router.add_get("/messages", messages_page)
     app.router.add_get("/api/config", get_config)
     app.router.add_post("/api/config", save_config)
+    app.router.add_patch("/api/config", patch_config)
     app.router.add_get("/api/status", status)
     app.router.add_post("/api/groups", groups)
     app.router.add_get("/api/messages", history)
+    app.router.add_get("/api/todoist/catalog", todoist_catalog)
+    app.router.add_post("/api/todoist/{kind}", todoist_create)
     app.router.add_static("/static/", STATIC)
     return app

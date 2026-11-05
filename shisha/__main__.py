@@ -41,8 +41,8 @@ async def main() -> None:
         try:
             await stopped.wait()
         finally:
-            await worker.close()
             await runner.cleanup()
+            await worker.close()
             history.close()
 
 

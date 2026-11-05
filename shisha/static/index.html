@@ -7,6 +7,8 @@
     <title>Shisha - 设置</title>
     <link rel="stylesheet" href="/static/style.css" />
     <script src="/static/common.js" defer></script>
+    <script src="/static/autosave.js" defer></script>
+    <script src="/static/group-editor.js" defer></script>
     <script src="/static/app.js" defer></script>
   </head>
   <body>
@@ -59,9 +61,9 @@
             <h1>设置</h1>
             <p class="intro">连接群聊，整理通知中的任务。</p>
           </div>
-          <button class="save-button" type="submit" form="settings-form">
-            <span>保存设置</span><span aria-hidden="true">↗</span>
-          </button>
+          <span class="save-state" data-save-state role="status"
+            >设置自动保存</span
+          >
         </div>
 
         <div class="mobile-status">
@@ -161,7 +163,10 @@
                   <span>监听群聊</span
                   ><small id="group-count">读取当前账号的群聊</small>
                 </div>
-                <button type="button" id="refresh-groups">刷新</button>
+                <div class="group-actions">
+                  <button type="button" id="add-group">新建分组</button
+                  ><button type="button" id="refresh-groups">刷新</button>
+                </div>
               </div>
               <label class="group-search"
                 ><span class="sr-only">搜索群聊</span
@@ -205,15 +210,19 @@
                   /><span>秒</span></span
                 ><small>同一发送者的相邻消息会合并处理</small></label
               >
-              <label class="field full"
-                ><span>触发关键词</span
-                ><textarea
-                  name="filter.keywords"
-                  rows="3"
-                  placeholder="每行一个关键词"
-                ></textarea
-                ><small>也可以用逗号分隔</small></label
-              >
+              <div class="field full">
+                <span>触发关键词</span>
+                <div id="keyword-editor" class="keyword-editor">
+                  <div id="keyword-list" class="keyword-list"></div>
+                  <label class="keyword-entry"
+                    ><span class="sr-only">添加关键词</span
+                    ><input
+                      id="keyword-input"
+                      type="text"
+                      placeholder="输入关键词，按回车添加"
+                  /></label>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -269,7 +278,7 @@
                   class="switch-track"
                 ></span></span
             ></label>
-            <div class="fields two-columns">
+            <div class="fields">
               <label class="field"
                 ><span>API 令牌</span
                 ><span class="secret"
@@ -283,23 +292,38 @@
                   </button></span
                 ></label
               >
-              <label class="field"
-                ><span>项目与板块</span
-                ><input
-                  name="todoist.section"
-                  type="text"
-                  placeholder="项目名.板块名"
-                /><small>留空时保存到收件箱</small></label
-              >
             </div>
+            <div class="targets-heading">
+              <div>
+                <span>分组目标</span
+                ><small>每个分组对应一个 Todoist 位置</small>
+              </div>
+              <button type="button" id="refresh-todoist">刷新</button>
+            </div>
+            <div id="todoist-groups" class="todoist-groups"></div>
           </section>
-          <div class="form-footer">
-            <span>更改会在保存后生效</span
-            ><button class="text-save" type="submit">
-              保存设置 <span aria-hidden="true">↗</span>
-            </button>
-          </div>
         </form>
+        <dialog id="create-dialog" class="create-dialog">
+          <form id="create-form">
+            <p class="eyebrow">SHISHA / CREATE</p>
+            <h2 id="create-title"></h2>
+            <p id="create-description" class="dialog-description"></p>
+            <label class="field"
+              ><span>名称</span
+              ><input
+                id="create-name"
+                type="text"
+                autocomplete="off"
+                required
+                maxlength="120"
+            /></label>
+            <p id="create-error" class="dialog-error" role="alert"></p>
+            <div class="dialog-actions">
+              <button id="create-cancel" type="button">取消</button
+              ><button id="create-submit" type="submit">创建</button>
+            </div>
+          </form>
+        </dialog>
         <div class="toast" role="status" aria-live="polite"></div>
       </main>
     </div>

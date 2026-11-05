@@ -31,6 +31,7 @@ class Worker:
     ):
         self.session, self.config, self.history = session, config, history
         self.connection: asyncio.Task | None = None
+        self.apply_lock = asyncio.Lock()
         self.connection_config: dict | None = None
         self.transport: WebSocketTransport | None = None
         self.sse_cursor: str | None = None
@@ -43,24 +44,25 @@ class Worker:
         self.last_error = ""
 
     async def apply(self) -> None:
-        settings = deepcopy(self.config.value["snowluma"])
-        if (
-            self.connection
-            and not self.connection.done()
-            and connection_key(settings) == connection_key(self.connection_config)
-        ):
-            return
-        if self.connection:
-            self.connection.cancel()
-            await asyncio.gather(self.connection, return_exceptions=True)
-        self.connected = False
-        self.last_error = ""
-        self.sse_cursor = None
-        self.connection_config = settings
-        if self.config.path.exists():
-            self.connection = asyncio.create_task(self._listen(settings))
-        else:
-            self.connection = None
+        async with self.apply_lock:
+            settings = deepcopy(self.config.value["snowluma"])
+            if (
+                self.connection
+                and not self.connection.done()
+                and connection_key(settings) == connection_key(self.connection_config)
+            ):
+                return
+            if self.connection:
+                self.connection.cancel()
+                await asyncio.gather(self.connection, return_exceptions=True)
+            self.connected = False
+            self.last_error = ""
+            self.sse_cursor = None
+            self.connection_config = settings
+            if self.config.path.exists():
+                self.connection = asyncio.create_task(self._listen(settings))
+            else:
+                self.connection = None
 
     def status(self) -> dict:
         return {

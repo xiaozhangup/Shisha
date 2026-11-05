@@ -7,6 +7,15 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlsplit
 
+DEFAULT_GROUP = {
+    "id": "default",
+    "name": "default",
+    "group_ids": [],
+    "project_id": "",
+    "section_id": "",
+    "legacy_section": "",
+}
+
 DEFAULTS = {
     "snowluma": {
         "mode": "ws",
@@ -27,7 +36,7 @@ DEFAULTS = {
         "model": "glm-4.1v-thinking-flash",
         "api_key": "",
     },
-    "todoist": {"enabled": True, "token": "", "section": ""},
+    "todoist": {"enabled": True, "token": "", "groups": [DEFAULT_GROUP]},
 }
 
 SECRETS = {
@@ -50,9 +59,22 @@ class ConfigStore:
         self.value = deepcopy(DEFAULTS)
         if self.path.exists():
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
-            for section in DEFAULTS:
-                self.value[section].update(loaded.get(section, {}))
+            for section, defaults in DEFAULTS.items():
+                self.value[section].update(
+                    {
+                        key: value
+                        for key, value in loaded.get(section, {}).items()
+                        if key in defaults
+                    }
+                )
+            old_todoist = loaded.get("todoist", {})
+            if "groups" not in old_todoist:
+                default = self.value["todoist"]["groups"][0]
+                default["group_ids"] = list(self.value["filter"]["groups"])
+                default["legacy_section"] = old_todoist.get("section", "")
             self._validate(self.value)
+            if "groups" not in old_todoist:
+                self._write(self.value)
 
     def public(self) -> dict:
         result = deepcopy(self.value)
@@ -80,6 +102,25 @@ class ConfigStore:
                 else:
                     updated[section][name] = value
         self._validate(updated)
+        self._write(updated)
+        self.value = updated
+        return self.public()
+
+    def patch(self, changes: dict) -> dict:
+        updated = deepcopy(self.value)
+        for section, values in changes.items():
+            if section not in DEFAULTS or not isinstance(values, dict):
+                raise ValueError("配置格式不正确")
+            for key, value in values.items():
+                if key not in DEFAULTS[section]:
+                    raise ValueError(f"未知配置：{section}.{key}")
+                updated[section][key] = deepcopy(value)
+        self._validate(updated)
+        self._write(updated)
+        self.value = updated
+        return self.public()
+
+    def _write(self, updated: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd, tmp_name = tempfile.mkstemp(
             dir=self.path.parent, prefix=".config-", suffix=".tmp"
@@ -92,15 +133,15 @@ class ConfigStore:
         finally:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
-        self.value = updated
-        return self.public()
 
     @staticmethod
     def _validate(config: dict) -> None:
         for section, defaults in DEFAULTS.items():
             for name, default in defaults.items():
                 value = config[section][name]
-                if isinstance(default, list):
+                if section == "todoist" and name == "groups":
+                    ConfigStore._validate_groups(value)
+                elif isinstance(default, list):
                     if not isinstance(value, list) or any(
                         not isinstance(item, str) for item in value
                     ):
@@ -158,6 +199,53 @@ class ConfigStore:
             not target.isascii() or not target.isdigit() or int(target) <= 0
         ):
             raise ValueError("通知群号必须为正整数")
+        routing = config["todoist"]["groups"]
+        assigned = {group_id for entry in routing for group_id in entry["group_ids"]}
+        default = next(entry for entry in routing if entry["id"] == "default")
+        default["group_ids"].extend(
+            group_id for group_id in groups if group_id not in assigned
+        )
+
+    @staticmethod
+    def _validate_groups(groups: object) -> None:
+        if not isinstance(groups, list) or not groups:
+            raise ValueError("必须保留 default 分组")
+        ids, names, members = set(), set(), set()
+        for group in groups:
+            if not isinstance(group, dict) or set(group) != set(DEFAULT_GROUP):
+                raise ValueError("Todoist 分组格式不正确")
+            for key in ("id", "name", "project_id", "section_id", "legacy_section"):
+                if not isinstance(group[key], str):
+                    raise TypeError("Todoist 分组字段必须是文本")
+                group[key] = group[key].strip()
+            if (
+                not group["id"]
+                or not group["name"]
+                or group["id"] in ids
+                or group["name"].casefold() in names
+            ):
+                raise ValueError("分组名称不能为空或重复")
+            if group["id"] == "default" and group["name"] != "default":
+                raise ValueError("default 分组不可重命名")
+            if group["section_id"] and not group["project_id"]:
+                raise ValueError("选择板块前请先选择项目")
+            if not isinstance(group["group_ids"], list):
+                raise TypeError("分组群聊必须是列表")
+            for group_id in group["group_ids"]:
+                if (
+                    not isinstance(group_id, str)
+                    or not group_id.isascii()
+                    or not group_id.isdigit()
+                    or int(group_id) <= 0
+                ):
+                    raise ValueError("分组群号必须为正整数")
+                if group_id in members:
+                    raise ValueError("一个群聊只能属于一个分组")
+                members.add(group_id)
+            ids.add(group["id"])
+            names.add(group["name"].casefold())
+        if "default" not in ids:
+            raise ValueError("必须保留 default 分组")
 
     def ready(self) -> bool:
         c = self.value

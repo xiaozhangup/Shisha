@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 
 import aiohttp
@@ -17,7 +18,6 @@ class TodoistClient:
         self.config = config
         self.base_url = "https://api.todoist.com/api/v1"
         self.headers = {"Authorization": f"Bearer {config['token']}"}
-        self._section_id: str | None = None
 
     async def _all(self, path: str) -> list[dict]:
         items, cursor = [], None
@@ -38,22 +38,62 @@ class TodoistClient:
             if not cursor:
                 return items
 
-    async def _section(self) -> str | None:
-        section = self.config["section"]
-        if not section:
-            return None
-        if self._section_id is None:
-            projects = {p["id"]: p["name"] for p in await self._all("projects")}
-            sections = await self._all("sections")
-            matches = [
-                s["id"]
+    async def catalog(self) -> dict:
+        projects, sections = await asyncio.gather(
+            self._all("projects"), self._all("sections")
+        )
+        return {
+            "projects": [
+                {"id": str(p["id"]), "name": p["name"]}
+                for p in projects
+                if not p.get("is_archived") and not p.get("is_deleted")
+            ],
+            "sections": [
+                {
+                    "id": str(s["id"]),
+                    "name": s["name"],
+                    "project_id": str(s["project_id"]),
+                }
                 for s in sections
-                if f"{projects.get(s['project_id'], '')}.{s['name']}" == section
-            ]
-            if len(matches) != 1:
-                raise TodoistError("找不到唯一的 Todoist 项目和板块，请检查设置")
-            self._section_id = matches[0]
-        return self._section_id
+                if not s.get("is_archived") and not s.get("is_deleted")
+            ],
+        }
+
+    async def create_project(self, name: str) -> dict:
+        return await self._post("projects", {"name": name})
+
+    async def create_section(self, name: str, project_id: str) -> dict:
+        return await self._post("sections", {"name": name, "project_id": project_id})
+
+    async def _post(self, path: str, data: dict) -> dict:
+        async with self.session.post(
+            f"{self.base_url}/{path}",
+            json=data,
+            headers=self.headers,
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as response:
+            response.raise_for_status()
+            return await response.json()
+
+    async def _destination(self, group_id: int) -> tuple[str, str]:
+        groups = self.config["groups"]
+        default = next(group for group in groups if group["id"] == "default")
+        selected = next(
+            (group for group in groups if str(group_id) in group["group_ids"]), default
+        )
+        if not selected["legacy_section"]:
+            return selected["project_id"], selected["section_id"]
+        catalog = await self.catalog()
+        projects = {p["id"]: p["name"] for p in catalog["projects"]}
+        matches = [
+            s
+            for s in catalog["sections"]
+            if f"{projects.get(s['project_id'], '')}.{s['name']}"
+            == selected["legacy_section"]
+        ]
+        if len(matches) != 1:
+            raise TodoistError("找不到唯一的 Todoist 项目和板块，请检查设置")
+        return matches[0]["project_id"], matches[0]["id"]
 
     async def create(self, task: Task, message: GroupMessage, raw: str) -> None:
         description = task.subject
@@ -65,7 +105,9 @@ class TodoistClient:
             description += f"\n\n时间: {task.related_time}"
         description += f"\n\n来自: {message.group_name or message.group_id} ({message.group_id})\n原始消息上下文:\n{raw}"
         data = {"content": task.title, "description": description.strip()}
-        section_id = await self._section()
+        project_id, section_id = await self._destination(message.group_id)
+        if project_id:
+            data["project_id"] = project_id
         if section_id:
             data["section_id"] = section_id
         if task.earliest_time:
