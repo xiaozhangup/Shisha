@@ -38,6 +38,7 @@ DEFAULTS = {
         "api_key": "",
     },
     "todoist": {"token": "", "groups": [DEFAULT_GROUP]},
+    "ui": {"group_columns": 1},
 }
 
 SECRETS = {
@@ -107,6 +108,8 @@ class ConfigStore:
         if not isinstance(cleared, list):
             raise TypeError("密钥操作格式不正确")
         for section, defaults in DEFAULTS.items():
+            if section == "ui" and section not in submitted:
+                continue
             values = submitted.get(section)
             if not isinstance(values, dict):
                 raise TypeError(f"缺少配置：{section}")
@@ -160,6 +163,9 @@ class ConfigStore:
                 value = config[section][name]
                 if section == "todoist" and name == "groups":
                     ConfigStore._validate_groups(value)
+                elif section == "ui" and name == "group_columns":
+                    if type(value) is not int or value not in (1, 2):
+                        raise ValueError("群聊显示列数只能为 1 或 2")
                 elif isinstance(default, list):
                     if not isinstance(value, list) or any(
                         not isinstance(item, str) for item in value

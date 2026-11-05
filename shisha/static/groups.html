@@ -38,16 +38,31 @@
             </button>
           </div>
         </div>
-        <div class="groups-board">
+        <div class="groups-board" data-columns="1">
           <section class="library-panel" aria-labelledby="library-title">
             <div class="panel-heading">
               <div>
                 <h2 id="library-title">所有群聊</h2>
                 <p id="group-count">正在读取…</p>
               </div>
-              <button class="quiet-button" id="refresh-groups" type="button">
-                刷新
-              </button>
+              <div class="library-actions">
+                <div
+                  class="columns-switch"
+                  id="columns-switch"
+                  role="group"
+                  aria-label="群聊显示列数"
+                >
+                  <button type="button" data-columns="1" aria-pressed="true">
+                    1 列
+                  </button>
+                  <button type="button" data-columns="2" aria-pressed="false">
+                    2 列
+                  </button>
+                </div>
+                <button class="quiet-button" id="refresh-groups" type="button">
+                  刷新
+                </button>
+              </div>
             </div>
             <label class="group-search"
               ><span class="sr-only">搜索群聊</span

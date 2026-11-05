@@ -8,6 +8,10 @@ class GroupBoard {
     this.groupError = "";
     this.list = document.querySelector("#group-list");
     this.board = document.querySelector("#group-board");
+    this.layout = document.querySelector(".groups-board");
+    this.columnOptions = document.querySelectorAll(
+      "#columns-switch [data-columns]",
+    );
     this.search = document.querySelector("#group-search");
     this.createDialog = document.querySelector("#create-dialog");
     this.createName = document.querySelector("#create-name");
@@ -18,6 +22,19 @@ class GroupBoard {
 
   bind() {
     this.search.addEventListener("input", () => this.renderLibrary());
+    this.columnOptions.forEach((button) =>
+      button.addEventListener("click", () => {
+        const columns = Number(button.dataset.columns);
+        this.state.ui.group_columns = columns;
+        this.renderColumns();
+        this.saver.queue(
+          "ui.group_columns",
+          { ui: { group_columns: columns } },
+          100,
+        );
+      }),
+    );
+    this.renderColumns();
     document
       .querySelector("#refresh-groups")
       .addEventListener("click", () => this.loadGroups());
@@ -36,6 +53,17 @@ class GroupBoard {
     document
       .querySelector("#move-cancel")
       .addEventListener("click", () => this.moveDialog.close());
+  }
+
+  renderColumns() {
+    const columns = this.state.ui.group_columns;
+    this.layout.dataset.columns = String(columns);
+    this.columnOptions.forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(Number(button.dataset.columns) === columns),
+      ),
+    );
   }
 
   saveRouting() {
@@ -127,8 +155,10 @@ class GroupBoard {
       return;
     }
     for (const group of visible) {
-      const card = document.createElement("div");
+      const card = document.createElement("button");
+      card.type = "button";
       card.className = "library-card";
+      card.classList.toggle("listening", selected.has(group.id));
       card.dataset.listId = group.id;
       this.makeDraggable(card, group.id);
       const meta = document.createElement("span");
@@ -142,13 +172,10 @@ class GroupBoard {
         ? this.displayName(this.assigned(group.id))
         : "未监听";
       meta.append(name, detail);
-      const move = document.createElement("button");
-      move.type = "button";
-      move.className = "move-button";
-      move.textContent = selected.has(group.id) ? "移动" : "加入";
-      move.setAttribute("aria-label", `${move.textContent} ${group.name}`);
-      move.addEventListener("click", () => this.openMove(group));
-      card.append(groupAvatar(group.id, group.name), meta, move);
+      card.setAttribute("aria-label", `${group.name}，${detail.textContent}`);
+      card.setAttribute("aria-haspopup", "dialog");
+      card.addEventListener("click", () => this.openMove(group));
+      card.append(groupAvatar(group.id, group.name), meta);
       this.list.append(card);
     }
   }
@@ -496,6 +523,9 @@ class GroupBoard {
       button.addEventListener("click", () => {
         this.assign(group.id, target.id);
         this.moveDialog.close();
+        this.list
+          .querySelector(`[data-list-id="${group.id}"]`)
+          ?.focus({ preventScroll: true });
       });
       options.append(button);
     }
