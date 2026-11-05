@@ -101,13 +101,6 @@ a {
   background: #e4ded1;
   color: #342e27;
 }
-.nav-icon {
-  display: inline-block;
-  color: #aa9e8c;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  width: 34px;
-}
 .side-footer {
   border-top: 1px solid #dad4c6;
   margin-top: auto;
@@ -196,12 +189,6 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.section-number {
-  font-family: Georgia, serif;
-  font-size: 11px;
-  color: #b2967c;
-  letter-spacing: 0.04em;
 }
 .section-heading h2 {
   margin: 0;
@@ -474,9 +461,6 @@ textarea:focus {
   }
   .navigation a:first-child {
     background: transparent;
-  }
-  .nav-icon {
-    display: none;
   }
   .main {
     padding: 34px 18px 50px;

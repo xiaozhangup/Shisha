@@ -32,7 +32,6 @@
         <section class="settings-section">
           <div class="section-heading">
             <div>
-              <span class="section-number">01</span>
               <h2>触发条件</h2>
             </div>
           </div>
@@ -67,7 +66,6 @@
         <section class="settings-section">
           <div class="section-heading">
             <div>
-              <span class="section-number">02</span>
               <h2>群通知</h2>
             </div>
           </div>
@@ -78,6 +76,16 @@
                 class="switch-track"
               ></span></span
           ></label>
+          <label class="field"
+            ><span>发送账号</span
+            ><select id="notification-sender">
+              <option value="self">当前监听账号</option>
+              <option value="other">其他 OneBot 账号</option>
+            </select></label
+          >
+          <p id="notification-connection-hint" class="connection-hint" hidden>
+            <a href="/#notification-connection">配置其他账号的连接地址和令牌</a>
+          </p>
           <label class="field"
             ><span>通知群聊</span
             ><select id="notification-group">

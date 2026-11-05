@@ -12,13 +12,34 @@
     const keywordInput = document.querySelector("#keyword-input");
     const delay = document.querySelector("#debounce-seconds");
     const notify = document.querySelector("#notify-enabled");
+    const sender = document.querySelector("#notification-sender");
+    const connectionHint = document.querySelector("#notification-connection-hint");
     const notification = document.querySelector("#notification-group");
     const groupMessage = document.querySelector("#group-message");
     const refresh = document.querySelector("#refresh-groups");
+    let groupRequest = 0;
 
     function saveFilter(key, value, wait = 100) {
       config.filter[key] = value;
       saver.queue(`filter.${key}`, { filter: { [key]: value } }, wait);
+    }
+
+    function saveNotification(key, value) {
+      config.notification[key] = value;
+      saver.queue(`notification.${key}`, { notification: { [key]: value } }, 100);
+    }
+
+    function selectedGroup() {
+      return sender.value === "other"
+        ? config.notification.group_id
+        : config.filter.notification_group;
+    }
+
+    function updateNotificationControls() {
+      sender.disabled = !notify.checked;
+      notification.disabled = !notify.checked;
+      refresh.disabled = !notify.checked;
+      connectionHint.hidden = !notify.checked || sender.value !== "other";
     }
 
     function renderKeywords() {
@@ -62,57 +83,59 @@
     });
     delay.addEventListener("change", () => saver.flush());
     notify.checked = config.filter.notify_enabled;
-    notification.disabled = !notify.checked;
+    sender.value = config.notification.sender;
+    updateNotificationControls();
     notify.addEventListener("change", () => {
-      notification.disabled = !notify.checked;
       saveFilter("notify_enabled", notify.checked);
+      updateNotificationControls();
+      if (notify.checked) loadGroups();
+      else groupRequest++;
     });
-    notification.addEventListener("change", () =>
-      saveFilter("notification_group", notification.value),
-    );
+    sender.addEventListener("change", () => {
+      saveNotification("sender", sender.value);
+      updateNotificationControls();
+      loadGroups();
+    });
+    notification.addEventListener("change", () => {
+      if (sender.value === "other")
+        saveNotification("group_id", notification.value);
+      else saveFilter("notification_group", notification.value);
+    });
 
     async function loadGroups(force = false) {
+      const request = ++groupRequest;
+      const source = sender.value;
       refresh.disabled = true;
+      notification.replaceChildren(new Option("选择通知群聊", ""));
       try {
-        const groups = await getSnowGroups(config, force);
-        notification.replaceChildren(new Option("选择通知群聊", ""));
+        const groups =
+          source === "other"
+            ? await getNotificationGroups(force)
+            : await getSnowGroups(config, force);
+        if (request !== groupRequest) return;
         for (const group of groups)
           notification.add(new Option(`${group.name} (${group.id})`, group.id));
-        if (
-          config.filter.notification_group &&
-          !groups.some((group) => group.id === config.filter.notification_group)
-        )
+        const selected = selectedGroup();
+        if (selected && !groups.some((group) => group.id === selected))
           notification.add(
-            new Option(
-              `群 ${config.filter.notification_group}`,
-              config.filter.notification_group,
-            ),
+            new Option(`群 ${selected}`, selected),
           );
-        notification.value = config.filter.notification_group;
+        notification.value = selected;
         groupMessage.textContent = "";
       } catch (error) {
-        if (
-          config.filter.notification_group &&
-          ![...notification.options].some(
-            (option) => option.value === config.filter.notification_group,
-          )
-        )
-          notification.add(
-            new Option(
-              `群 ${config.filter.notification_group}`,
-              config.filter.notification_group,
-            ),
-          );
-        notification.value = config.filter.notification_group;
+        if (request !== groupRequest) return;
+        const selected = selectedGroup();
+        if (selected) notification.add(new Option(`群 ${selected}`, selected));
+        notification.value = selected;
         groupMessage.textContent = error.message || "无法读取群列表";
       } finally {
-        refresh.disabled = false;
+        if (request === groupRequest) refresh.disabled = !notify.checked;
       }
     }
     refresh.addEventListener("click", () => loadGroups(true));
     renderKeywords();
     renderStatus(data.status);
-    loadGroups();
+    if (notify.checked) loadGroups();
     setInterval(refreshStatus, 4000);
   } catch (error) {
     label.classList.add("error");

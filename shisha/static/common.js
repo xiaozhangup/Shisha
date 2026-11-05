@@ -57,7 +57,7 @@ async function refreshStatus() {
 function initNavigation() {
   const sidebar = document.querySelector("[data-navigation]");
   if (!sidebar) return;
-  sidebar.innerHTML = `<a class="brand" href="/" aria-label="Shisha 首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M22.8 9.2c-1.8-1.3-4.1-1.9-6.3-1.4-2.2.4-3.7 1.8-3.7 3.6 0 4.7 10.2 2.6 10.2 8 0 2.2-2 3.9-4.8 4.2-2.5.3-5-.5-6.8-2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M12 28h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".55"/></svg></span><span class="brand-name">Shisha</span></a><div class="side-label">菜单</div><nav class="navigation primary-nav" aria-label="页面导航"><a href="/"><span class="nav-icon">01</span>设置</a><a href="/groups"><span class="nav-icon">02</span>分组</a><a href="/rules"><span class="nav-icon">03</span>规则</a><a href="/messages"><span class="nav-icon">04</span>消息</a></nav><div class="side-footer"><span class="status-dot" data-status-dot></span><div><strong data-status>等待配置</strong><span data-status-detail>完成设置后开始监听</span></div></div>`;
+  sidebar.innerHTML = `<a class="brand" href="/" aria-label="Shisha 首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 36 36" fill="none"><path d="M22.8 9.2c-1.8-1.3-4.1-1.9-6.3-1.4-2.2.4-3.7 1.8-3.7 3.6 0 4.7 10.2 2.6 10.2 8 0 2.2-2 3.9-4.8 4.2-2.5.3-5-.5-6.8-2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M12 28h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".55"/></svg></span><span class="brand-name">Shisha</span></a><div class="side-label">菜单</div><nav class="navigation primary-nav" aria-label="页面导航"><a href="/">设置</a><a href="/groups">分组</a><a href="/rules">规则</a><a href="/messages">消息</a></nav><div class="side-footer"><span class="status-dot" data-status-dot></span><div><strong data-status>等待配置</strong><span data-status-detail>完成设置后开始监听</span></div></div>`;
   for (const link of sidebar.querySelectorAll(".primary-nav a")) {
     if (new URL(link.href).pathname === window.location.pathname) {
       link.classList.add("active");
@@ -108,6 +108,17 @@ async function getSnowGroups(config, refresh = false) {
       token: "",
       refresh,
     }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "无法读取群列表");
+  return data.groups;
+}
+
+async function getNotificationGroups(refresh = false) {
+  const response = await fetch("/api/groups", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: "notification", refresh }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "无法读取群列表");

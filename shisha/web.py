@@ -81,12 +81,20 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
             body = await request.json()
             if not isinstance(body, dict):
                 raise TypeError("连接设置格式不正确")
-            connection = config.connection_settings(body)
+            source = body.get("source", "snowluma")
+            if source == "notification":
+                connection = config.value["notification"]
+                if not connection[f"{connection['mode']}_url"]:
+                    raise ValueError("请先在设置中填写通知账号的连接地址")
+            elif source == "snowluma":
+                connection = config.connection_settings(body)
+            else:
+                raise ValueError("未知的群列表来源")
             refresh = body.get("refresh", False)
             if type(refresh) is not bool:
                 raise TypeError("刷新参数必须是开关")
             items = await worker.client(connection).action(
-                "get_group_list", {"no_cache": refresh}
+                "get_group_list", {"no_cache": refresh} if source == "snowluma" else {}
             )
             return web.json_response(
                 {

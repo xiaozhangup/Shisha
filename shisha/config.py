@@ -32,6 +32,15 @@ DEFAULTS = {
         "notify_enabled": True,
         "debounce_seconds": 30,
     },
+    "notification": {
+        "sender": "self",
+        "mode": "http",
+        "http_url": "",
+        "http_token": "",
+        "ws_url": "",
+        "ws_token": "",
+        "group_id": "",
+    },
     "ai": {
         "base_url": "https://open.bigmodel.cn/api/paas/v4/",
         "model": "glm-4.1v-thinking-flash",
@@ -44,6 +53,8 @@ DEFAULTS = {
 SECRETS = {
     ("snowluma", "http_token"),
     ("snowluma", "ws_token"),
+    ("notification", "http_token"),
+    ("notification", "ws_token"),
     ("ai", "api_key"),
     ("todoist", "token"),
 }
@@ -61,6 +72,12 @@ def todoist_group(config: dict, group_id: int | str) -> dict:
     return next(
         (group for group in groups if str(group_id) in group["group_ids"]), default
     )
+
+
+def notification_target(config: dict) -> str:
+    if config["notification"]["sender"] == "other":
+        return config["notification"]["group_id"]
+    return config["filter"]["notification_group"]
 
 
 class ConfigStore:
@@ -108,7 +125,7 @@ class ConfigStore:
         if not isinstance(cleared, list):
             raise TypeError("密钥操作格式不正确")
         for section, defaults in DEFAULTS.items():
-            if section == "ui" and section not in submitted:
+            if section in {"ui", "notification"} and section not in submitted:
                 continue
             values = submitted.get(section)
             if not isinstance(values, dict):
@@ -203,6 +220,29 @@ class ConfigStore:
             or (mode == "http" and parsed.query)
         ):
             raise ValueError(f"SnowLuma {key} 地址无效")
+        notification = config["notification"]
+        if notification["sender"] not in {"self", "other"}:
+            raise ValueError("请选择通知发送账号")
+        mode = notification["mode"]
+        if mode not in {"http", "ws"}:
+            raise ValueError("请选择通知账号的连接方式")
+        key, schemes = (
+            ("http_url", {"http", "https"})
+            if mode == "http"
+            else ("ws_url", {"ws", "wss"})
+        )
+        url = notification[key]
+        if url:
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme not in schemes
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.fragment
+                or (mode == "http" and parsed.query)
+            ):
+                raise ValueError("通知账号的连接地址无效")
         parsed = urlsplit(config["ai"]["base_url"])
         if (
             parsed.scheme not in {"http", "https"}
@@ -222,6 +262,13 @@ class ConfigStore:
             raise ValueError("监听群号必须为正整数")
         if target and (
             not target.isascii() or not target.isdigit() or int(target) <= 0
+        ):
+            raise ValueError("通知群号必须为正整数")
+        other_target = notification["group_id"]
+        if other_target and (
+            not other_target.isascii()
+            or not other_target.isdigit()
+            or int(other_target) <= 0
         ):
             raise ValueError("通知群号必须为正整数")
         routing = config["todoist"]["groups"]
@@ -288,7 +335,14 @@ class ConfigStore:
             c["filter"]["groups"]
             and c["ai"]["model"]
             and c["ai"]["api_key"]
-            and (not c["filter"]["notify_enabled"] or c["filter"]["notification_group"])
+            and (not c["filter"]["notify_enabled"] or notification_target(c))
+        ):
+            return False
+        notification = c["notification"]
+        if (
+            c["filter"]["notify_enabled"]
+            and notification["sender"] == "other"
+            and not notification[f"{notification['mode']}_url"]
         ):
             return False
         if c["todoist"]["token"]:

@@ -33,7 +33,6 @@
           <section class="settings-section" id="connection">
             <div class="section-heading">
               <div>
-                <span class="section-number">01</span>
                 <h2>SnowLuma</h2>
               </div>
               <p>OneBot 连接</p>
@@ -102,10 +101,69 @@
               >
             </div>
           </section>
+          <section class="settings-section" id="notification-connection">
+            <div class="section-heading">
+              <div><h2>其他 OneBot 账号</h2></div>
+              <p>用于发送群通知</p>
+            </div>
+            <fieldset class="connection-mode">
+              <legend>连接方式</legend>
+              <label
+                ><input type="radio" name="notification.mode" value="http" checked /><span
+                  >HTTP</span
+                ></label
+              ><label
+                ><input type="radio" name="notification.mode" value="ws" /><span
+                  >WebSocket</span
+                ></label
+              >
+            </fieldset>
+            <div class="fields two-columns" data-notification-connection="http">
+              <label class="field"
+                ><span>HTTP 地址</span
+                ><input
+                  name="notification.http_url"
+                  type="url"
+                  placeholder="http://127.0.0.1:3000/"
+              /></label>
+              <label class="field"
+                ><span>HTTP 令牌</span
+                ><span class="secret"
+                  ><input
+                    name="notification.http_token"
+                    type="password"
+                    autocomplete="new-password"
+                  /><button type="button" data-clear="notification.http_token">
+                    清除
+                  </button></span
+                ></label
+              >
+            </div>
+            <div class="fields two-columns" data-notification-connection="ws" hidden>
+              <label class="field"
+                ><span>WebSocket 地址</span
+                ><input
+                  name="notification.ws_url"
+                  type="url"
+                  placeholder="ws://127.0.0.1:3001/"
+              /></label>
+              <label class="field"
+                ><span>WebSocket 令牌</span
+                ><span class="secret"
+                  ><input
+                    name="notification.ws_token"
+                    type="password"
+                    autocomplete="new-password"
+                  /><button type="button" data-clear="notification.ws_token">
+                    清除
+                  </button></span
+                ></label
+              >
+            </div>
+          </section>
           <section class="settings-section" id="model">
             <div class="section-heading">
               <div>
-                <span class="section-number">02</span>
                 <h2>AI 模型</h2>
               </div>
               <p>兼容 Chat Completions 的 API</p>
@@ -136,7 +194,6 @@
           <section class="settings-section" id="todoist">
             <div class="section-heading">
               <div>
-                <span class="section-number">03</span>
                 <h2>Todoist</h2>
               </div>
               <p>API 访问</p>

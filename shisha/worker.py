@@ -10,7 +10,7 @@ from copy import deepcopy
 import aiohttp
 
 from .analyzer import Analyzer
-from .config import ConfigStore, todoist_group
+from .config import ConfigStore, notification_target, todoist_group
 from .models import GroupMessage, Task
 from .snowluma import SnowLumaClient
 from .storage import History
@@ -193,7 +193,7 @@ class Worker:
             and event.get("notice_type") == "group_msg_emoji_like"
         ):
             if (
-                str(event.get("group_id")) != config["filter"]["notification_group"]
+                str(event.get("group_id")) != notification_target(config)
                 or str(event.get("group_id")) not in config["filter"]["groups"]
                 or event.get("sub_type") != "add"
             ):
@@ -271,11 +271,15 @@ class Worker:
     ) -> None:
         if not config["filter"]["notify_enabled"]:
             return
-        target = int(config["filter"]["notification_group"])
+        target = int(notification_target(config))
+        own_sender = config["notification"]["sender"] == "self"
+        sender = client if own_sender else self.client(config["notification"])
         if message.group_id == target:
-            await client.send(target, text, reply_to=message.message_id)
+            await sender.send(
+                target, text, reply_to=message.message_id if own_sender else None
+            )
         else:
-            await client.send(
+            await sender.send(
                 target,
                 f"{text}\n\n来自: {message.group_name or message.group_id} ({message.group_id})\n原文:\n{message.text[:69]}",
             )
@@ -290,7 +294,7 @@ class Worker:
     ) -> None:
         client = self.client(config["snowluma"])
         if config["filter"]["notify_enabled"] and message.group_id == int(
-            config["filter"]["notification_group"]
+            notification_target(config)
         ):
             try:
                 await client.mark(message)

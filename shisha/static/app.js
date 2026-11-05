@@ -28,6 +28,18 @@ function updateMode() {
       .querySelectorAll("input, button")
       .forEach((input) => (input.disabled = !active));
   }
+  const notificationMode = form.querySelector(
+    'input[name="notification.mode"]:checked',
+  ).value;
+  for (const section of document.querySelectorAll(
+    "[data-notification-connection]",
+  )) {
+    const active = section.dataset.notificationConnection === notificationMode;
+    section.hidden = !active;
+    section
+      .querySelectorAll("input, button")
+      .forEach((input) => (input.disabled = !active));
+  }
 }
 
 function bindSettings() {
@@ -70,7 +82,8 @@ function bindSettings() {
           { [section]: { [key]: config[section][key] } },
           eventName === "change" ? 100 : 600,
         );
-        if (input.name === "snowluma.mode") updateMode();
+        if (["snowluma.mode", "notification.mode"].includes(input.name))
+          updateMode();
       });
       if (eventName === "input")
         input.addEventListener("change", () => saver.flush());
