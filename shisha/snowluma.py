@@ -8,6 +8,7 @@ import time
 import aiohttp
 
 from .models import GroupMessage
+from .qq_faces import FACE_NAMES
 from .transport import TransportError as SnowLumaError
 from .transport import WebSocketTransport, authorization
 
@@ -102,13 +103,28 @@ class SnowLumaClient:
                 target = str(data.get("qq", ""))
                 if target == "all":
                     at_all = True
-                    parts.append("@全体成员")
-                else:
-                    parts.append(f"@{target}")
+                parts.append(target)
             elif kind == "file":
-                parts.append(f"[文件: {data.get('name') or data.get('file', '')}]")
+                parts.append(f"<文件>{data.get('name') or data.get('file', '')}</文件>")
             elif kind == "image":
-                parts.append(str(data.get("url") or "[图片]"))
+                url = data.get("url") or ""
+                if not url and data.get("file"):
+                    try:
+                        info = await self.action("get_image", {"file": data["file"]})
+                        url = info.get("url") or ""
+                    except (TimeoutError, aiohttp.ClientError, SnowLumaError) as exc:
+                        log.warning("读取图片地址失败: %s", type(exc).__name__)
+                parts.append(str(url))
+            elif kind == "face":
+                parts.append(FACE_NAMES.get(str(data.get("id", "")), "[表情]"))
+            elif kind == "record":
+                parts.append("[语音消息]")
+            elif kind == "video":
+                parts.append("[视频]")
+            elif kind == "json":
+                parts.append("<小程序></小程序>")
+            elif kind == "xml":
+                parts.append(f"<服务>{data.get('resid', data.get('id', ''))}</服务>")
             elif kind == "markdown":
                 parts.append(str(data.get("content", "")))
             elif kind == "forward" and depth < 5:
@@ -120,16 +136,16 @@ class SnowLumaClient:
                     result = await self.action("get_forward_msg", {"id": forward_id})
                     nodes = []
                     for item in result["messages"]:
-                        text, nested_at_all = await self._render(
+                        text, _ = await self._render(
                             item.get("message", ""), seen, depth + 1
                         )
-                        if text:
-                            nodes.append(text)
-                        at_all = at_all or nested_at_all
+                        nodes.append(text)
                     parts.append("\n".join(nodes))
                 except (TimeoutError, aiohttp.ClientError, SnowLumaError) as exc:
                     log.warning("读取合并转发失败: %s", type(exc).__name__)
                     parts.append("[合并转发读取失败]")
+                finally:
+                    seen.remove(forward_id)
         return "".join(parts), at_all
 
     async def send(self, group_id: int, text: str, reply_to: int | None = None) -> None:

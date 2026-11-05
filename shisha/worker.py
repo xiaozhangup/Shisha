@@ -179,6 +179,7 @@ class Worker:
             self.buffers.setdefault(key, deque()).append(msg)
             if self.config.ready(msg.group_id) and (
                 msg.at_all
+                or "@全体成员" in msg.text
                 or any(word in msg.text for word in config["filter"]["keywords"])
             ):
                 previous = self.timers.pop(key, None)
@@ -247,8 +248,8 @@ class Worker:
             ):
                 end += 1
             relevant = messages[start : end + 1]
-            text = "\n".join(message.text for message in relevant).strip()
-            if text:
+            text = "\n".join(message.text for message in relevant)
+            if text.strip():
                 self._spawn(
                     self._process(trigger, text, relevant, config, manual=False)
                 )
@@ -321,7 +322,12 @@ class Worker:
         finally:
             self.inflight.remove(text)
         if not tasks:
-            await self._notify(client, config, message, "消息中未提取到任务")
+            notice = (
+                "该消息未包含任务信息，未创建任务"
+                if manual
+                else "无法解析消息上下文，未能提取到有效任务信息"
+            )
+            await self._notify(client, config, message, notice)
             return
         todoist = (
             TodoistClient(self.session, config["todoist"])
@@ -353,16 +359,15 @@ class Worker:
 
 def format_summary(task: Task, message_id: int, success: bool | None) -> str:
     parts = [task.title]
-    if task.related_time:
-        parts.append(f"时间:\n{task.related_time}")
+    if task.related_time.strip():
+        parts.append(f"时间: \n{task.related_time}")
     if task.attachments:
         parts.append(
-            "附件:\n"
+            "附件: \n"
             + "\n".join(f"{i}. {item}" for i, item in enumerate(task.attachments, 1))
         )
-    if task.subject:
+    if task.subject.strip():
         parts.append(task.subject)
     if success is False:
-        parts.append("#无法插入Todoist")
-    parts.append(f"#任务 #{message_id}")
-    return "\n\n".join(parts)
+        return "\n\n".join(parts) + f"\n\n#无法插入Todoist\n#任务 #{message_id}"
+    return "\n\n".join(parts) + f"\n\n#任务 #{message_id}"

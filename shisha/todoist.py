@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 
 import aiohttp
 
@@ -93,31 +92,23 @@ class TodoistClient:
         return matches[0]["project_id"], matches[0]["id"]
 
     async def create(self, task: Task, message: GroupMessage, raw: str) -> None:
-        description = task.subject
+        description = task.subject if task.subject.strip() else ""
         if task.attachments:
-            description += "\n\n附件:\n" + "\n".join(
+            description += "\n\n附件: \n" + "\n".join(
                 f"{i}. {item}" for i, item in enumerate(task.attachments, 1)
             )
-        if task.related_time:
+        if task.related_time.strip():
             description += f"\n\n时间: {task.related_time}"
         description += f"\n\n来自: {message.group_name or message.group_id} ({message.group_id})\n原始消息上下文:\n{raw}"
-        data = {"content": task.title, "description": description.strip()}
+        data = {"content": task.title, "description": description}
         project_id, section_id = await self._destination(message.group_id)
         if project_id:
             data["project_id"] = project_id
         if section_id:
             data["section_id"] = section_id
-        if task.earliest_time:
-            for fmt in ("%Y.%m.%d %H:%M", "%Y.%m.%d"):
-                try:
-                    due = datetime.strptime(task.earliest_time, fmt)
-                except ValueError:
-                    continue
-                if fmt.endswith("%H:%M"):
-                    data["due_string"] = due.strftime("%Y-%m-%d %H:%M")
-                else:
-                    data["due_date"] = due.strftime("%Y-%m-%d")
-                break
+        if task.earliest_time.strip():
+            data["due_string"] = task.earliest_time
+            data["due_lang"] = "en"
         async with self.session.post(
             f"{self.base_url}/tasks",
             json=data,
