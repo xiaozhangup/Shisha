@@ -25,7 +25,7 @@ def create_app(config: ConfigStore, worker: Worker) -> web.Application:
         response = await handler(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' https://p.qlogo.cn; base-uri 'none'; frame-ancestors 'none'"
+            "default-src 'self'; img-src 'self' https://p.qlogo.cn https://q1.qlogo.cn; base-uri 'none'; frame-ancestors 'none'"
         )
         response.headers["Cache-Control"] = "no-store"
         return response

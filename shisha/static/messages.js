@@ -97,6 +97,14 @@ function messageRow(item, submitted = false) {
     item.sender_name || (item.user_id ? String(item.user_id) : "原消息未收集");
   const avatar = element("span", "chat-avatar", [...name.trim()][0] || "群");
   avatar.setAttribute("aria-hidden", "true");
+  if (item.user_id > 0) {
+    const image = document.createElement("img");
+    image.alt = "";
+    image.loading = "lazy";
+    image.src = `https://q1.qlogo.cn/g?b=qq&nk=${item.user_id}&s=100`;
+    image.addEventListener("error", () => image.remove());
+    avatar.append(image);
+  }
   const content = element("div", "chat-message-content");
   const meta = element("div", "chat-message-meta");
   meta.append(

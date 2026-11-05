@@ -848,15 +848,24 @@ select:disabled {
   width: 65%;
 }
 .chat-avatar {
+  position: relative;
   width: 31px;
   height: 31px;
   flex: none;
   display: grid;
   place-items: center;
+  overflow: hidden;
   border-radius: 10px;
   background: #e9e1d5;
   color: #9d775d;
   font-size: 12px;
+}
+.chat-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .chat-message-content {
   min-width: 0;
