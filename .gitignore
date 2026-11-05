@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.ruff_cache/
+.env
+.env.*
+/config.json
+/history.sqlite3*
+/data/
+build/
+dist/

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shisha"
+version = "0.1.0"
+description = "从群聊通知中提取任务"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+dependencies = ["aiohttp>=3.10,<4"]
+
+[project.urls]
+Source = "https://github.com/xiaozhangup/Shisha"
+"Original module" = "https://github.com/xiaozhangup/xiaozhangup-bot/blob/master/src/main/kotlin/me/xiaozhangup/bot/func/TaskAbstract.kt"
+
+[tool.setuptools.package-data]
+shisha = ["static/*"]
